@@ -1,3 +1,6 @@
 torch
 torchvision
 ipykernel
+matplotlib
+diffusers
+accelerate

@@ -12,7 +12,10 @@ setup(
         # "gradio",
         "ipykernel",
         # "huggingface_hub",
+        "matplotlib",
         "torch",
         "torchvision",
+        "diffusers",
+        "accelerate",
     ],
 )
