@@ -4,3 +4,4 @@ ipykernel
 matplotlib
 accelerate
 segmentation-models-pytorch
+gdown

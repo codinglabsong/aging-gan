@@ -17,5 +17,6 @@ setup(
         "torchvision",
         "accelerate",
         "segmentation-models-pytorch",
+        "gdown",
     ],
 )
