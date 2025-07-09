@@ -2,5 +2,5 @@ torch
 torchvision
 ipykernel
 matplotlib
-diffusers
 accelerate
+segmentation-models-pytorch

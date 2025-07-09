@@ -15,7 +15,7 @@ setup(
         "matplotlib",
         "torch",
         "torchvision",
-        "diffusers",
         "accelerate",
+        "segmentation-models-pytorch",
     ],
 )
