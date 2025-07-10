@@ -7,3 +7,6 @@ segmentation-models-pytorch
 gdown
 tqdm
 torchmetrics
+wandb
+numpy
+python-dotenv

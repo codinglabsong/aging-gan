@@ -4,12 +4,13 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import wandb
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from torchmetrics.image.fid import FrechetInceptionDistance
 
 
-from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters, save_best_checkpoint, generate_and_save_samples
+from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters, save_best_checkpoint, generate_and_save_samples, get_device
 from aging_gan.data import prepare_dataset
 from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
 
@@ -53,7 +54,7 @@ def parse_args() -> argparse.Namespace:
         "--seed", type=int, default=42, help="Random seed value for reproducibility."
     )
     p.add_argument(
-        "--print_stats_after_batch", type=int, default=1, help="Print training metrics after certain batch steps."
+        "--steps_for_logging_metrics", type=int, default=10, help="Print training metrics after certain batch steps."
     )
     p.add_argument(
         "--num_sample_generations_to_save", type=int, default=8, help="The number of example generated images to save per epoch."
@@ -65,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         help="Skip evaluation on the test split after training.",
     )
 
-    p.add_argument("--wandb_project", type=str, default="Emoji-reaction-coach-with-lora")
+    p.add_argument("--wandb_project", type=str, default="aging-gan")
     
     args = p.parse_args()
     return args
@@ -181,13 +182,13 @@ def perform_train_step(
     opt_F.step()
     
     return {
-        "loss_DX": loss_DX.item(),
-        "loss_DY": loss_DY.item(),
-        "loss_f_adv": loss_f_adv.item(),
-        "loss_g_adv": loss_g_adv.item(),
-        "loss_cyc": loss_cyc.item(),
-        "loss_id": loss_id.item(),
-        "loss_gen_total": loss_gen_total.item() 
+        "train/loss_DX": loss_DX.item(),
+        "train/loss_DY": loss_DY.item(),
+        "train/loss_f_adv": loss_f_adv.item(),
+        "train/loss_g_adv": loss_g_adv.item(),
+        "train/loss_cyc": loss_cyc.item(),
+        "train/loss_id": loss_id.item(),
+        "train/loss_gen_total": loss_gen_total.item() 
     }
     
     
@@ -199,14 +200,14 @@ def perform_val_epoch(
     fid_metric,
 ):
     metrics = {
-        "loss_DX": 0.0,
-        "loss_DY": 0.0,
-        "loss_f_adv": 0.0,
-        "loss_g_adv": 0.0,
-        "loss_cyc": 0.0,
-        "loss_id": 0.0,
-        "loss_gen_total": 0.0,
-        "fid_val": 0.0,
+        "val/loss_DX": 0.0,
+        "val/loss_DY": 0.0,
+        "val/loss_f_adv": 0.0,
+        "val/loss_g_adv": 0.0,
+        "val/loss_cyc": 0.0,
+        "val/loss_id": 0.0,
+        "val/loss_gen_total": 0.0,
+        "val/fid_val": 0.0,
     }
     n_batches = 0
     
@@ -261,19 +262,19 @@ def perform_val_epoch(
             fid_metric.update(fake_y * 0.5 + 0.5, real=False)
             
             # ------ Accumulate ------
-            metrics["loss_DX"] += loss_DX.item()
-            metrics["loss_DY"] += loss_DY.item()
-            metrics["loss_f_adv"] += loss_f_adv.item()
-            metrics["loss_g_adv"] += loss_g_adv.item()
-            metrics["loss_cyc"] += loss_cyc.item()
-            metrics["loss_id"] += loss_id.item()
-            metrics["loss_gen_total"] += loss_gen_total.item()
+            metrics["val/loss_DX"] += loss_DX.item()
+            metrics["val/loss_DY"] += loss_DY.item()
+            metrics["val/loss_f_adv"] += loss_f_adv.item()
+            metrics["val/loss_g_adv"] += loss_g_adv.item()
+            metrics["val/loss_cyc"] += loss_cyc.item()
+            metrics["val/loss_id"] += loss_id.item()
+            metrics["val/loss_gen_total"] += loss_gen_total.item()
             
             n_batches += 1
     
         # Compute epoch fid metric
         fid_val = fid_metric.compute()
-        metrics["fid_val"] = fid_val.item()
+        metrics["val/fid_val"] = fid_val.item()
     
     # per-batch average
     for k in metrics:
@@ -313,9 +314,18 @@ def perform_epoch(
             accelerator
         )
         # Print statistics and generate iamge after every n-th batch
-        if batch_no % cfg.print_stats_after_batch == 0:
-            logger.info(f"loss_DX: {train_metrics['loss_DX']:.4f} | loss_DY: {train_metrics['loss_DY']:.4f} | loss_gen_total: {train_metrics['loss_gen_total']:.4f} | loss_g_adv: {train_metrics['loss_g_adv']:.4f} | loss_f_adv: {train_metrics['loss_f_adv']:.4f} | loss_cyc: {train_metrics['loss_cyc']:.4f} | loss_id: {train_metrics['loss_id']:.4f}")
-            # generate_image(G, epoch, batch_no)
+        if batch_no % cfg.steps_for_logging_metrics == 0:
+            logger.info(f"train/loss_DX: {train_metrics['train/loss_DX']:.4f} | train/loss_DY: {train_metrics['train/loss_DY']:.4f} | train/loss_gen_total: {train_metrics['train/loss_gen_total']:.4f} | train/loss_g_adv: {train_metrics['train/loss_g_adv']:.4f} | train/loss_f_adv: {train_metrics['train/loss_f_adv']:.4f} | train/loss_cyc: {train_metrics['train/loss_cyc']:.4f} | train/loss_id: {train_metrics['train/loss_id']:.4f}")
+            wandb.log(train_metrics)
+            # save example generated images
+            generate_and_save_samples(
+                G,
+                val_loader,
+                epoch,
+                batch_no,
+                get_device(),
+                cfg.num_sample_generations_to_save,
+            )
     # Step schedulers per epoch
     sched_G.step()
     sched_F.step()
@@ -335,11 +345,12 @@ def perform_epoch(
         bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
         fid_metric, # evaluation metric
     )
-    logger.info(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | fid_val: {val_metrics['fid_val']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
+    logger.info(f"val/loss_DX: {val_metrics['val/loss_DX']:.4f} | val/loss_DY: {val_metrics['val/loss_DY']:.4f} | val/fid_val: {val_metrics['val/fid_val']:.4f} | val/loss_gen_total: {val_metrics['val/loss_gen_total']:.4f} | val/loss_g_adv: {val_metrics['val/loss_g_adv']:.4f} | val/loss_f_adv: {val_metrics['val/loss_f_adv']:.4f} | val/loss_cyc: {val_metrics['val/loss_cyc']:.4f} | val/loss_id: {val_metrics['val/loss_id']:.4f}")
+    wandb.log(val_metrics)
     # Clear memory after every epoch
     torch.cuda.empty_cache()
     
-    return val_metrics['fid_val']
+    return val_metrics
 
 
 def main() -> None:
@@ -349,9 +360,13 @@ def main() -> None:
     load_environ_vars(cfg.wandb_project)
     
     # ---------- Run Initialization ----------
+    # wandb
+    wandb.init(
+        project=cfg.wandb_project,
+        config={k: v for k, v in vars(cfg).items() if not k.startswith("_")}, # drop python's or "private" framework-internal attributes
+    )
     # choose device
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Using: {DEVICE}")
+    logger.info(f"Using: {get_device()}")
     # reproducibility (optional, but less efficient if set)
     if cfg.set_seed:
         set_seed(cfg.seed)
@@ -400,7 +415,7 @@ def main() -> None:
             logger.info("Parameters of generator G after unfreezing:")
             print_trainable_parameters(G)
             
-        fid_val = perform_epoch(
+        val_metrics = perform_epoch(
             cfg,
             train_loader, val_loader,
             G, F,
@@ -414,8 +429,8 @@ def main() -> None:
             fid_metric,
         )
         # save only the best models with the lowest checkpoints
-        if fid_val < best_fid:
-            fid_val = best_fid
+        if val_metrics['val/fid_val'] < best_fid:
+            best_fid = val_metrics['val/fid_val']
             save_best_checkpoint(
                 epoch,
                 G, F, DX, DY,
@@ -423,14 +438,6 @@ def main() -> None:
                 opt_DX, opt_DY, # discriminator optimizers
                 sched_G, sched_F, sched_DX, sched_DY, # schedulers
             )
-        # save example generated images
-        generate_and_save_samples(
-            G,
-            val_loader,
-            epoch,
-            DEVICE,
-            cfg.num_sample_generations_to_save,
-        )
     
     # Finished
     logger.info(f"Finished run.")

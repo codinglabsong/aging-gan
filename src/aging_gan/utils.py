@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 
+def get_device():
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def set_seed(seed: int) -> None:
     """Seed all RNGs (Python, NumPy, Torch) for deterministic runs."""
     random.seed(seed)  # vanilla Python Random Number Generator (RNG)
@@ -70,7 +73,8 @@ def save_best_checkpoint(
 def generate_and_save_samples(
     generator,
     val_loader,
-    epoch: int,
+    epoch, 
+    batch_no: int,
     device: torch.device,
     num_samples: int = 8,
 ):
@@ -107,8 +111,11 @@ def generate_and_save_samples(
     # ensure output directory exists
     out_dir = os.path.join(os.path.dirname(__file__), "..", "..", "outputs/images/")
     os.makedirs(out_dir, exist_ok=True)
-    filename = os.path.join(out_dir, f"epoch{epoch:03d}.png")
+    filename = os.path.join(out_dir, f"epoch{epoch}_batch_no{batch_no:03d}.jpg")
     
     plt.tight_layout()
-    plt.savefig(filename)
+    plt.savefig(filename, format="jpeg", quality=90, optimize=True)
     plt.close(fig)
+    
+    # set to training mode before exiting
+    generator.train() 
