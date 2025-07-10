@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         "--print_stats_after_batch", type=int, default=1, help="Print training metrics after certain batch steps."
     )
     p.add_argument(
-        "--num_example_images_to_save", type=int, default=8, help="The number of example generated images to save per epoch."
+        "--num_sample_generations_to_save", type=int, default=8, help="The number of example generated images to save per epoch."
     )
     p.add_argument(
         "--skip_test",
@@ -429,7 +429,7 @@ def main() -> None:
             val_loader,
             epoch,
             DEVICE,
-            cfg.num_example_images_to_save,
+            cfg.num_sample_generations_to_save,
         )
     
     # Finished
