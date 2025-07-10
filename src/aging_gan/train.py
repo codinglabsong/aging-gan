@@ -1,14 +1,11 @@
 import argparse
 from accelerate import Accelerator
 import logging
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import List
-from pathlib import Path
 
-from aging_gan.utils import set_seed, load_environ_vars
+from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters
 from aging_gan.data import prepare_dataset
 from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
 
@@ -20,14 +17,6 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
 
     # hyperparams
-    p.add_argument(
-        "--set_seed",
-        action="store_true", # default=False
-        help="Set seed for entire run for reproducibility.",
-    )
-    p.add_argument(
-        "--seed", type=int, default=42, help="Random seed value for reproducibility."
-    )
     p.add_argument(
         "--learning_rate",
         type=float,
@@ -51,6 +40,17 @@ def parse_args() -> argparse.Namespace:
     )
 
     # other client params
+    p.add_argument(
+        "--set_seed",
+        action="store_true", # default=False
+        help="Set seed for entire run for reproducibility.",
+    )
+    p.add_argument(
+        "--seed", type=int, default=42, help="Random seed value for reproducibility."
+    )
+    p.add_argument(
+        "--print_stats_after_batch", type=int, default=1, help="Print training metrics after certain batch steps."
+    )
     p.add_argument(
         "--skip_test",
         action="store_false",
@@ -87,7 +87,219 @@ def initialize_loss_functions(
     lambda_id = lambda_id_value
     
     return bce, l1, lambda_cyc, lambda_id
+
+
+def perform_train_step(
+    G, F, # generator models
+    DX, DY, # discriminator models
+    real_data,
+    bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+    opt_G, opt_F, # generator optimizers
+    opt_DX, opt_DY, # discriminator optimizers
+    accelerator,
+):
+    x, y = real_data
+    # Generate fakes and reconstrucitons
+    fake_x = F(y)
+    fake_y = G(x)
+    rec_x = F(fake_y)
+    rec_y = G(fake_x)
     
+    # ------ Update Discriminators ------
+    # DX: real young vs fake young
+    opt_DX.zero_grad(set_to_none=True) 
+    real_logits = DX(x)
+    real_targets = torch.ones_like(real_logits)
+    real_loss = bce(real_logits, real_targets)
+    
+    fake_logits = DX(fake_x.detach())
+    fake_targets = torch.zeros_like(fake_logits)
+    fake_loss = bce(fake_logits, fake_targets)
+
+    # DX loss + backprop + step
+    loss_DX = 0.5 * (real_loss + fake_loss)
+    accelerator.backward(loss_DX)
+    opt_DX.step()
+    # DY: real old vs fake old
+    opt_DY.zero_grad(set_to_none=True) 
+    real_logits = DY(y)
+    real_targets = torch.ones_like(real_logits)
+    real_loss = bce(real_logits, real_targets)
+    
+    fake_logits = DY(fake_y.detach())
+    fake_targets = torch.zeros_like(fake_logits)
+    fake_loss = bce(fake_logits, fake_targets)
+
+    # DY loss + backprop + step
+    loss_DY = 0.5 * (real_loss + fake_loss) # average loss to prevent discriminator learning "too quickly" compread to generators.
+    accelerator.backward(loss_DY)
+    opt_DY.step()
+    
+    # ------ Update Generators ------
+    opt_G.zero_grad(set_to_none=True)
+    opt_F.zero_grad(set_to_none=True)
+    # Loss 1: adversarial terms
+    fake_test_logits = DX(fake_x) # fake x logits
+    loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    
+    fake_test_logits = DY(fake_y) # fake y logits
+    loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    # Loss 2: cycle terms
+    loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
+    # Loss 3: identity terms
+    loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+    # Total loss
+    loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+
+    # Backprop + step
+    accelerator.backward(loss_gen_total)
+    opt_G.step()
+    opt_F.step()
+    
+    return {
+        "loss_DX": loss_DX.item(),
+        "loss_DY": loss_DY.item(),
+        "loss_f_adv": loss_f_adv.item(),
+        "loss_g_adv": loss_g_adv.item(),
+        "loss_cyc": loss_cyc.item(),
+        "loss_id": loss_id.item(),
+        "loss_gen_total": loss_gen_total.item() 
+    }
+    
+    
+def perform_val_epoch(
+    G, F, # generator models
+    DX, DY, # discriminator models
+    val_loader,
+    bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+):
+    # change to eval mode
+    G.eval()
+    F.eval()
+    DX.eval()
+    DY.eval()
+    
+    metrics = {
+        "loss_DX": 0.0,
+        "loss_DY": 0.0,
+        "loss_f_adv": 0.0,
+        "loss_g_adv": 0.0,
+        "loss_cyc": 0.0,
+        "loss_id": 0.0,
+        "loss_gen_total": 0.0,
+    }
+    n_batches = 0
+    
+    with torch.no_grad():        
+        for x, y in val_loader:        
+            # Forward: Generate fakes and reconstrucitons
+            fake_x = F(y)
+            fake_y = G(x)
+            rec_x = F(fake_y)
+            rec_y = G(fake_x)
+            
+            # ------ Evaluate Discriminators ------
+            # DX: real young vs fake young
+            real_logits = DX(x)
+            real_targets = torch.ones_like(real_logits)
+            real_loss = bce(real_logits, real_targets)
+            
+            fake_logits = DX(fake_x)
+            fake_targets = torch.zeros_like(fake_logits)
+            fake_loss = bce(fake_logits, fake_targets)
+            # DX loss
+            loss_DX = 0.5 * (real_loss + fake_loss)
+            
+            # DY: real old vs fake old
+            real_logits = DY(y)
+            real_targets = torch.ones_like(real_logits)
+            real_loss = bce(real_logits, real_targets)
+            
+            fake_logits = DY(fake_y)
+            fake_targets = torch.zeros_like(fake_logits)
+            fake_loss = bce(fake_logits, fake_targets)
+
+            # DY loss
+            loss_DY = 0.5 * (real_loss + fake_loss) # average loss to prevent discriminator learning "too quickly" compread to generators.
+            
+            # ------ Evaluate Generators ------
+            # Loss 1: adversarial terms
+            fake_test_logits = DX(fake_x) # fake x logits
+            loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+            
+            fake_test_logits = DY(fake_y) # fake y logits
+            loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+            # Loss 2: cycle terms
+            loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
+            # Loss 3: identity terms
+            loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+            # Total loss
+            loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+            
+            # ------ Accumulate ------
+            metrics["loss_DX"] += loss_DX.item()
+            metrics["loss_DY"] += loss_DY.item()
+            metrics["loss_f_adv"] += loss_f_adv.item()
+            metrics["loss_g_adv"] += loss_g_adv.item()
+            metrics["loss_cyc"] += loss_cyc.item()
+            metrics["loss_id"] += loss_id.item()
+            metrics["loss_gen_total"] += loss_gen_total.item()
+            
+            n_batches += 1
+    
+    # per-batch average
+    for k in metrics:
+        metrics[k] /= n_batches
+
+    return metrics
+
+
+def perform_epoch(
+    cfg,
+    train_loader, val_loader,
+    G, F,
+    DX, DY,
+    bce, l1, lambda_cyc, lambda_id,
+    opt_G, opt_F, # generator optimizers
+    opt_DX, opt_DY, # discriminator optimizers
+    epoch,
+    accelerator,
+):
+    """ Perform a single epoch."""
+    print("Training...")
+    # Training
+    G.train()
+    F.train()
+    DX.train()
+    DY.train()
+    for batch_no, real_data in enumerate(train_loader):      
+        train_metrics = perform_train_step(
+            G, F, # generator models
+            DX, DY, # discriminator models
+            real_data,
+            bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+            opt_G, opt_F, # generator optimizers
+            opt_DX, opt_DY, # discriminator optimizers
+            accelerator
+        )
+        # Print statistics and generate iamge after every n-th batch
+        if batch_no % cfg.print_stats_after_batch == 0:
+            print(f"loss_DX: {train_metrics['loss_DX']:.4f} | loss_DY: {train_metrics['loss_DY']:.4f} | loss_gen_total: {train_metrics['loss_gen_total']:.4f} | loss_g_adv: {train_metrics['loss_g_adv']:.4f} | loss_f_adv: {train_metrics['loss_f_adv']:.4f} | loss_cyc: {train_metrics['loss_cyc']:.4f} | loss_id: {train_metrics['loss_id']:.4f}")
+            # generate_image(G, epoch, batch_no)
+    # Evaluation
+    print("Evlauating...")
+    val_metrics = perform_val_epoch(
+        G, F, # generator models
+        DX, DY, # discriminator models
+        val_loader,
+        bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+    )
+    print(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
+    # # Save models on epoch completion
+    # save_models(G, F, DX, DY, lambda_cyc, lambda_id, epoch)
+    # Clear memory after every epoch
+    torch.cuda.empty_cache()
+
 
 def main() -> None:
     """Entry point: parse args, prepare data, train, evaluate, and optionally test."""
@@ -99,7 +311,6 @@ def main() -> None:
     # choose device
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Using: {DEVICE}")
-
     # reproducibility (optional, but less efficient if set)
     if cfg.set_seed:
         set_seed(cfg.seed)
@@ -113,13 +324,15 @@ def main() -> None:
     # ---------- Models, Optimizers, & Loss Functions Initialization ----------
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
-    
-    # Freeze generator encoderes for early training
+    # Freeze generator encoderes for training during early epochs
+    logger.info("Parameters of generator G:")
+    print_trainable_parameters(G)
+    logger.info("Freezing encoders of generators...")
     freeze_encoders(G, F)
-    
+    logger.info("Parameters of generator G after freezing:")
+    print_trainable_parameters(G)
     # Initialize optimizers
     opt_G, opt_F, opt_DX, opt_DY, = initialize_optimizers(cfg, G, F, DX, DY)  
-    
     # Prepare Accelerator (uses hf accelerate to move models to correct device,
     # wrap in DDP if needed, shard the dataloader, and enable mixed-precision).
     accelerator = Accelerator(mixed_precision="fp16")
@@ -128,13 +341,32 @@ def main() -> None:
         opt_G, opt_F, opt_DX, opt_DY, 
         train_loader, val_loader
     )
-
     # Loss functions and scalers
     bce, l1, lambda_cyc, lambda_id = initialize_loss_functions()
     
     # ---------- Train & Checkpoint ----------
-    
-    # remember to unfreeze encoders during training after 1st epoch.
+    for epoch in range(1, cfg.num_train_epochs+1):
+        print(f"\nStarting epoch {epoch}...")
+        # after 1 full epoch, unfreeze
+        if epoch == 2:
+            logger.info("Unfreezing encoders of generators...")
+            unfreeze_encoders(G, F)
+            logger.info("Parameters of generator G after unfreezing:")
+            print_trainable_parameters(G)
+            
+        perform_epoch(
+            cfg,
+            train_loader, val_loader,
+            G, F,
+            DX, DY,
+            bce, l1, lambda_cyc, lambda_id,
+            opt_G, opt_F, # generator optimizers
+            opt_DX, opt_DY, # discriminator optimizers
+            epoch,
+            accelerator,
+        )
+    # Finished
+    print(f"Finished run.")
 
 
 if __name__ == "__main__":
