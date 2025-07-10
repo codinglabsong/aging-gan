@@ -18,5 +18,7 @@ setup(
         "accelerate",
         "segmentation-models-pytorch",
         "gdown",
+        "tqdm",
+        "torchmetrics",
     ],
 )

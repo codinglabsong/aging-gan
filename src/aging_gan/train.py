@@ -5,6 +5,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
+from tqdm import tqdm
+from torchmetrics.image.fid import FrechetInceptionDistance
+
 
 from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters
 from aging_gan.data import prepare_dataset
@@ -191,6 +194,7 @@ def perform_val_epoch(
     DX, DY, # discriminator models
     val_loader,
     bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+    fid_metric,
 ):
     metrics = {
         "loss_DX": 0.0,
@@ -200,11 +204,13 @@ def perform_val_epoch(
         "loss_cyc": 0.0,
         "loss_id": 0.0,
         "loss_gen_total": 0.0,
+        "fid_val": 0.0,
     }
     n_batches = 0
     
-    with torch.no_grad():        
-        for x, y in val_loader:        
+    with torch.no_grad():  
+        fid_metric.reset()      
+        for x, y in tqdm(val_loader):        
             # Forward: Generate fakes and reconstrucitons
             fake_x = F(y)
             fake_y = G(x)
@@ -248,6 +254,9 @@ def perform_val_epoch(
             loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
             # Total loss
             loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+            # FID metric (normalize to range of [0,1] from [-1,1])
+            fid_metric.update(y * 0.5 + 0.5, real=True) 
+            fid_metric.update(fake_y * 0.5 + 0.5, real=False)
             
             # ------ Accumulate ------
             metrics["loss_DX"] += loss_DX.item()
@@ -259,6 +268,10 @@ def perform_val_epoch(
             metrics["loss_gen_total"] += loss_gen_total.item()
             
             n_batches += 1
+    
+        # Compute epoch fid metric
+        fid_val = fid_metric.compute()
+        metrics["fid_val"] = fid_val.item()
     
     # per-batch average
     for k in metrics:
@@ -278,6 +291,7 @@ def perform_epoch(
     sched_G, sched_F, sched_DX, sched_DY, # schedulers
     epoch,
     accelerator,
+    fid_metric,
 ):
     """ Perform a single epoch."""
     # TRAINING
@@ -286,7 +300,7 @@ def perform_epoch(
     F.train()
     DX.train()
     DY.train()
-    for batch_no, real_data in enumerate(train_loader):      
+    for batch_no, real_data in enumerate(tqdm(train_loader)):      
         train_metrics = perform_train_step(
             G, F, # generator models
             DX, DY, # discriminator models
@@ -317,8 +331,9 @@ def perform_epoch(
         DX, DY, # discriminator models
         val_loader,
         bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+        fid_metric, # evaluation metric
     )
-    logger.info(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
+    logger.info(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | fid_val: {val_metrics['fid_val']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
     # # Save models on epoch completion
     # save_models(G, F, DX, DY, lambda_cyc, lambda_id, epoch)
     # Clear memory after every epoch
@@ -369,6 +384,9 @@ def main() -> None:
     bce, l1, lambda_cyc, lambda_id = initialize_loss_functions()
     # Initialize schedulers (It it important this comes AFTER wrapping optimizers in accelerator)
     sched_G, sched_F, sched_DX, sched_DY = make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY)
+    # Initialize FID metric for evaluation
+    fid_metric = FrechetInceptionDistance(feature=2048, normalize=True).to(accelerator.device)
+    
     # ---------- Train & Checkpoint ----------
     for epoch in range(1, cfg.num_train_epochs+1):
         logger.info(f"\nStarting epoch {epoch}...")
@@ -390,6 +408,7 @@ def main() -> None:
             sched_G, sched_F, sched_DX, sched_DY, # schedulers
             epoch,
             accelerator,
+            fid_metric,
         )
     # Finished
     logger.info(f"Finished run.")
