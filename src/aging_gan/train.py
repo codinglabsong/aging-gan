@@ -4,6 +4,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR
 
 from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters
 from aging_gan.data import prepare_dataset
@@ -89,6 +90,24 @@ def initialize_loss_functions(
     return bce, l1, lambda_cyc, lambda_id
 
 
+def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
+    # keep lr constant constant for the first half, then linearly decay to 0 
+    n_epochs = cfg.num_train_epochs
+    start_decay = n_epochs // 2
+    
+    def _lr_lambda(epoch):
+        if epoch < start_decay:
+            return 1.0
+        # linearly decay from 1.0 -> 0.0 from start_decay
+        return max(0.0, (n_epochs - epoch) / (n_epochs - start_decay))
+    
+    sched_G = LambdaLR(opt_G, lr_lambda=_lr_lambda)
+    sched_F = LambdaLR(opt_F, lr_lambda=_lr_lambda)
+    sched_DX = LambdaLR(opt_DX, lr_lambda=_lr_lambda)
+    sched_DY = LambdaLR(opt_DY, lr_lambda=_lr_lambda)
+    
+    return sched_G, sched_F, sched_DX, sched_DY
+
 def perform_train_step(
     G, F, # generator models
     DX, DY, # discriminator models
@@ -173,12 +192,6 @@ def perform_val_epoch(
     val_loader,
     bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
 ):
-    # change to eval mode
-    G.eval()
-    F.eval()
-    DX.eval()
-    DY.eval()
-    
     metrics = {
         "loss_DX": 0.0,
         "loss_DY": 0.0,
@@ -262,12 +275,13 @@ def perform_epoch(
     bce, l1, lambda_cyc, lambda_id,
     opt_G, opt_F, # generator optimizers
     opt_DX, opt_DY, # discriminator optimizers
+    sched_G, sched_F, sched_DX, sched_DY, # schedulers
     epoch,
     accelerator,
 ):
     """ Perform a single epoch."""
-    print("Training...")
-    # Training
+    # TRAINING
+    logger.info("Training...")
     G.train()
     F.train()
     DX.train()
@@ -284,17 +298,27 @@ def perform_epoch(
         )
         # Print statistics and generate iamge after every n-th batch
         if batch_no % cfg.print_stats_after_batch == 0:
-            print(f"loss_DX: {train_metrics['loss_DX']:.4f} | loss_DY: {train_metrics['loss_DY']:.4f} | loss_gen_total: {train_metrics['loss_gen_total']:.4f} | loss_g_adv: {train_metrics['loss_g_adv']:.4f} | loss_f_adv: {train_metrics['loss_f_adv']:.4f} | loss_cyc: {train_metrics['loss_cyc']:.4f} | loss_id: {train_metrics['loss_id']:.4f}")
+            logger.info(f"loss_DX: {train_metrics['loss_DX']:.4f} | loss_DY: {train_metrics['loss_DY']:.4f} | loss_gen_total: {train_metrics['loss_gen_total']:.4f} | loss_g_adv: {train_metrics['loss_g_adv']:.4f} | loss_f_adv: {train_metrics['loss_f_adv']:.4f} | loss_cyc: {train_metrics['loss_cyc']:.4f} | loss_id: {train_metrics['loss_id']:.4f}")
             # generate_image(G, epoch, batch_no)
-    # Evaluation
-    print("Evlauating...")
+    # Step schedulers per epoch
+    sched_G.step()
+    sched_F.step()
+    sched_DX.step()
+    sched_DY.step()
+    
+    # EVALUATION
+    logger.info("Evlauating...")
+    G.eval()
+    F.eval()
+    DX.eval()
+    DY.eval()
     val_metrics = perform_val_epoch(
         G, F, # generator models
         DX, DY, # discriminator models
         val_loader,
         bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
     )
-    print(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
+    logger.info(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
     # # Save models on epoch completion
     # save_models(G, F, DX, DY, lambda_cyc, lambda_id, epoch)
     # Clear memory after every epoch
@@ -321,7 +345,7 @@ def main() -> None:
     # ---------- Data Preprocessing ----------
     train_loader, val_loader, test_loader = prepare_dataset()
     
-    # ---------- Models, Optimizers, & Loss Functions Initialization ----------
+    # ---------- Models, Optimizers, Loss Functions, Schedulers Initialization ----------
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
     # Freeze generator encoderes for training during early epochs
@@ -343,10 +367,11 @@ def main() -> None:
     )
     # Loss functions and scalers
     bce, l1, lambda_cyc, lambda_id = initialize_loss_functions()
-    
+    # Initialize schedulers (It it important this comes AFTER wrapping optimizers in accelerator)
+    sched_G, sched_F, sched_DX, sched_DY = make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY)
     # ---------- Train & Checkpoint ----------
     for epoch in range(1, cfg.num_train_epochs+1):
-        print(f"\nStarting epoch {epoch}...")
+        logger.info(f"\nStarting epoch {epoch}...")
         # after 1 full epoch, unfreeze
         if epoch == 2:
             logger.info("Unfreezing encoders of generators...")
@@ -362,11 +387,12 @@ def main() -> None:
             bce, l1, lambda_cyc, lambda_id,
             opt_G, opt_F, # generator optimizers
             opt_DX, opt_DY, # discriminator optimizers
+            sched_G, sched_F, sched_DX, sched_DY, # schedulers
             epoch,
             accelerator,
         )
     # Finished
-    print(f"Finished run.")
+    logger.info(f"Finished run.")
 
 
 if __name__ == "__main__":
