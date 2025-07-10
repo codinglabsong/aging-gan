@@ -9,7 +9,7 @@ from tqdm import tqdm
 from torchmetrics.image.fid import FrechetInceptionDistance
 
 
-from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters
+from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters, save_best_checkpoint
 from aging_gan.data import prepare_dataset
 from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
 
@@ -334,10 +334,10 @@ def perform_epoch(
         fid_metric, # evaluation metric
     )
     logger.info(f"loss_DX: {val_metrics['loss_DX']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | loss_DY: {val_metrics['loss_DY']:.4f} | fid_val: {val_metrics['fid_val']:.4f} | loss_gen_total: {val_metrics['loss_gen_total']:.4f} | loss_g_adv: {val_metrics['loss_g_adv']:.4f} | loss_f_adv: {val_metrics['loss_f_adv']:.4f} | loss_cyc: {val_metrics['loss_cyc']:.4f} | loss_id: {val_metrics['loss_id']:.4f}")
-    # # Save models on epoch completion
-    # save_models(G, F, DX, DY, lambda_cyc, lambda_id, epoch)
     # Clear memory after every epoch
     torch.cuda.empty_cache()
+    
+    return val_metrics['fid_val']
 
 
 def main() -> None:
@@ -388,6 +388,7 @@ def main() -> None:
     fid_metric = FrechetInceptionDistance(feature=2048, normalize=True).to(accelerator.device)
     
     # ---------- Train & Checkpoint ----------
+    best_fid = float("inf") # keep track of the best FID score for each epoch
     for epoch in range(1, cfg.num_train_epochs+1):
         logger.info(f"\nStarting epoch {epoch}...")
         # after 1 full epoch, unfreeze
@@ -397,7 +398,7 @@ def main() -> None:
             logger.info("Parameters of generator G after unfreezing:")
             print_trainable_parameters(G)
             
-        perform_epoch(
+        fid_val = perform_epoch(
             cfg,
             train_loader, val_loader,
             G, F,
@@ -410,6 +411,17 @@ def main() -> None:
             accelerator,
             fid_metric,
         )
+        # save only the best models with the lowest checkpoints
+        if fid_val < best_fid:
+            fid_val = best_fid
+            save_best_checkpoint(
+                epoch,
+                G, F, DX, DY,
+                opt_G, opt_F, # generator optimizers
+                opt_DX, opt_DY, # discriminator optimizers
+                sched_G, sched_F, sched_DX, sched_DY, # schedulers
+            )
+    
     # Finished
     logger.info(f"Finished run.")
 

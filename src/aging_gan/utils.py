@@ -33,3 +33,36 @@ def print_trainable_parameters(model) -> str:
             trainable_params += param.numel()
 
     return f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param:.2f}"
+
+
+def save_best_checkpoint(
+    epoch,
+    G, F, DX, DY,
+    opt_G, opt_F, # generator optimizers
+    opt_DX, opt_DY, # discriminator optimizers
+    sched_G, sched_F, sched_DX, sched_DY, # schedulers
+):
+    """Overwrite the single best‐ever checkpoint."""
+    ckpt_dir = os.path.join(os.path.dirname(__file__), "..", "..", "outputs/checkpoints/")
+    os.makedirs(ckpt_dir, exist_ok=True)
+    
+    state = {
+        "epoch":          epoch,
+        "G":              G.state_dict(),
+        "F":              F.state_dict(),
+        "DX":             DX.state_dict(),
+        "DY":             DY.state_dict(),
+        "opt_G":          opt_G.state_dict(),
+        "opt_F":          opt_F.state_dict(),
+        "opt_DX":         opt_DX.state_dict(),
+        "opt_DY":         opt_DY.state_dict(),
+        "sched_G":        sched_G.state_dict(),
+        "sched_F":        sched_F.state_dict(),
+        "sched_DX":       sched_DX.state_dict(),
+        "sched_DY":       sched_DY.state_dict(),
+    }
+    
+    filename = os.path.join(ckpt_dir, "best.pth")
+    torch.save(state, filename)
+    logger.info(f"Saved best checkpoint: {filename}")
+
