@@ -9,7 +9,7 @@ from tqdm import tqdm
 from torchmetrics.image.fid import FrechetInceptionDistance
 
 
-from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters, save_best_checkpoint
+from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters, save_best_checkpoint, generate_and_save_samples
 from aging_gan.data import prepare_dataset
 from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
 
@@ -56,6 +56,9 @@ def parse_args() -> argparse.Namespace:
         "--print_stats_after_batch", type=int, default=1, help="Print training metrics after certain batch steps."
     )
     p.add_argument(
+        "--num_example_images_to_save", type=int, default=8, help="The number of example generated images to save per epoch."
+    )
+    p.add_argument(
         "--skip_test",
         action="store_false",
         dest="do_test",
@@ -63,7 +66,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     p.add_argument("--wandb_project", type=str, default="Emoji-reaction-coach-with-lora")
-    p.add_argument("--model_dir", type=str, default="outputs/")
     
     args = p.parse_args()
     return args
@@ -421,6 +423,14 @@ def main() -> None:
                 opt_DX, opt_DY, # discriminator optimizers
                 sched_G, sched_F, sched_DX, sched_DY, # schedulers
             )
+        # save example generated images
+        generate_and_save_samples(
+            G,
+            val_loader,
+            epoch,
+            DEVICE,
+            cfg.num_example_images_to_save,
+        )
     
     # Finished
     logger.info(f"Finished run.")

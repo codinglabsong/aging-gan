@@ -3,6 +3,7 @@ import logging
 import random
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 
@@ -66,3 +67,48 @@ def save_best_checkpoint(
     torch.save(state, filename)
     logger.info(f"Saved best checkpoint: {filename}")
 
+def generate_and_save_samples(
+    generator,
+    val_loader,
+    epoch: int,
+    device: torch.device,
+    num_samples: int = 8,
+):
+    # set to evaluation mode
+    generator.eval() 
+    
+    # grab one batch
+    inputs, _ = next(iter(val_loader))
+    inputs = inputs.to(device)[:num_samples]
+    with torch.no_grad():
+        outputs = generator(inputs)
+        
+    # un-normalize from [-1, 1] to [0, 1]
+    inputs = (inputs * 0.5) + 0.5
+    outputs = (outputs * 0.5) + 0.5
+    
+    # build figure
+    fig, axes = plt.subplots(num_samples, 2, figsize=(4, 2*num_samples), dpi=100)
+    for i in range(num_samples):
+        # original
+        ax = axes[i, 0]
+        img = inputs[i].cpu().permute(1,2,0).clamp(0,1).numpy()
+        ax.imshow(img)
+        ax.set_title("Input")
+        ax.axis("off")
+        
+        # generated
+        ax = axes[i, 1]
+        gen = outputs[i].cpu().permute(1,2,0).clamp(0,1).numpy()
+        ax.imshow(gen)
+        ax.set_title("Generated")
+        ax.axis("off")
+        
+    # ensure output directory exists
+    out_dir = os.path.join(os.path.dirname(__file__), "..", "..", "outputs/images/")
+    os.makedirs(out_dir, exist_ok=True)
+    filename = os.path.join(out_dir, f"epoch{epoch:03d}.png")
+    
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close(fig)
