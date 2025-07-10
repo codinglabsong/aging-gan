@@ -192,28 +192,29 @@ def perform_train_step(
     }
     
     
-def perform_val_epoch(
+def evaluate_epoch(
     G, F, # generator models
     DX, DY, # discriminator models
-    val_loader,
+    loader,
+    split: str, # either "val" or "test"
     bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
     fid_metric,
 ):
     metrics = {
-        "val/loss_DX": 0.0,
-        "val/loss_DY": 0.0,
-        "val/loss_f_adv": 0.0,
-        "val/loss_g_adv": 0.0,
-        "val/loss_cyc": 0.0,
-        "val/loss_id": 0.0,
-        "val/loss_gen_total": 0.0,
-        "val/fid_val": 0.0,
+        f"{split}/loss_DX": 0.0,
+        f"{split}/loss_DY": 0.0,
+        f"{split}/loss_f_adv": 0.0,
+        f"{split}/loss_g_adv": 0.0,
+        f"{split}/loss_cyc": 0.0,
+        f"{split}/loss_id": 0.0,
+        f"{split}/loss_gen_total": 0.0,
+        f"{split}/fid_val": 0.0,
     }
     n_batches = 0
     
     with torch.no_grad():  
         fid_metric.reset()      
-        for x, y in tqdm(val_loader):        
+        for x, y in tqdm(loader):        
             # Forward: Generate fakes and reconstrucitons
             fake_x = F(y)
             fake_y = G(x)
@@ -262,19 +263,19 @@ def perform_val_epoch(
             fid_metric.update(fake_y * 0.5 + 0.5, real=False)
             
             # ------ Accumulate ------
-            metrics["val/loss_DX"] += loss_DX.item()
-            metrics["val/loss_DY"] += loss_DY.item()
-            metrics["val/loss_f_adv"] += loss_f_adv.item()
-            metrics["val/loss_g_adv"] += loss_g_adv.item()
-            metrics["val/loss_cyc"] += loss_cyc.item()
-            metrics["val/loss_id"] += loss_id.item()
-            metrics["val/loss_gen_total"] += loss_gen_total.item()
+            metrics[f"{split}/loss_DX"] += loss_DX.item()
+            metrics[f"{split}/loss_DY"] += loss_DY.item()
+            metrics[f"{split}/loss_f_adv"] += loss_f_adv.item()
+            metrics[f"{split}/loss_g_adv"] += loss_g_adv.item()
+            metrics[f"{split}/loss_cyc"] += loss_cyc.item()
+            metrics[f"{split}/loss_id"] += loss_id.item()
+            metrics[f"{split}/loss_gen_total"] += loss_gen_total.item()
             
             n_batches += 1
     
         # Compute epoch fid metric
         fid_val = fid_metric.compute()
-        metrics["val/fid_val"] = fid_val.item()
+        metrics[f"{split}/fid_val"] = fid_val.item()
     
     # per-batch average
     for k in metrics:
@@ -338,10 +339,11 @@ def perform_epoch(
     F.eval()
     DX.eval()
     DY.eval()
-    val_metrics = perform_val_epoch(
+    val_metrics = evaluate_epoch(
         G, F, # generator models
         DX, DY, # discriminator models
         val_loader,
+        "val",
         bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
         fid_metric, # evaluation metric
     )
@@ -404,7 +406,7 @@ def main() -> None:
     # Initialize FID metric for evaluation
     fid_metric = FrechetInceptionDistance(feature=2048, normalize=True).to(accelerator.device)
     
-    # ---------- Train & Checkpoint ----------
+    # ---------- Train, Evaluate, & Checkpoint ----------
     best_fid = float("inf") # keep track of the best FID score for each epoch
     for epoch in range(1, cfg.num_train_epochs+1):
         logger.info(f"\nStarting epoch {epoch}...")
@@ -438,6 +440,22 @@ def main() -> None:
                 opt_DX, opt_DY, # discriminator optimizers
                 sched_G, sched_F, sched_DX, sched_DY, # schedulers
             )
+            
+    # ---------- Test ----------
+    if cfg.do_test:
+        logger.info("Running final test-set evaluation...")
+        test_metrics = evaluate_epoch(
+            G, F, # generator models
+            DX, DY, # discriminator models
+            test_loader,
+            "test",
+            bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
+            fid_metric, # evaluation metric
+        )
+        logger.info(f"Test metrics:\n{test_metrics}")
+        wandb.log(test_metrics)
+    else:
+        logger.info("Skipping test evaluation...")
     
     # Finished
     logger.info(f"Finished run.")
