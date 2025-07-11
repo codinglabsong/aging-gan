@@ -76,19 +76,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_size",
         type=int,
-        default=100,
+        default=8000,
         help="The size of train dataset to train on.",
     )
     p.add_argument(
         "--val_size",
         type=int,
-        default=20,
+        default=800,
         help="The size of validation dataset to evaluate.",
     )
     p.add_argument(
         "--test_size",
         type=int,
-        default=20,
+        default=800,
         help="The size of test dataset to evaluate.",
     )
     p.add_argument(
