@@ -15,7 +15,7 @@ from aging_gan.utils import (
     set_seed,
     load_environ_vars,
     print_trainable_parameters,
-    save_best_checkpoint,
+    save_checkpoint,
     generate_and_save_samples,
     get_device,
 )
@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for optimizer.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=2, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=150, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
@@ -563,10 +563,10 @@ def main() -> None:
             accelerator,
             fid_metric,
         )
-        # save only the best models with the lowest checkpoints
+        # save the best models with the lowest fid score
         if val_metrics["val/fid_val"] < best_fid:
             best_fid = val_metrics["val/fid_val"]
-            save_best_checkpoint(
+            save_checkpoint(
                 epoch,
                 G,
                 F,
@@ -580,7 +580,25 @@ def main() -> None:
                 sched_F,
                 sched_DX,
                 sched_DY,  # schedulers
+                "best"
             )
+        # save the latest checkpoint
+        save_checkpoint(
+            epoch,
+            G,
+            F,
+            DX,
+            DY,
+            opt_G,
+            opt_F,  # generator optimizers
+            opt_DX,
+            opt_DY,  # discriminator optimizers
+            sched_G,
+            sched_F,
+            sched_DX,
+            sched_DY,  # schedulers
+            "latest"
+        )
 
     # ---------- Test ----------
     if cfg.do_test:

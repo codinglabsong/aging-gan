@@ -1,4 +1,5 @@
 import os
+import glob
 import logging
 import random
 import numpy as np
@@ -45,7 +46,7 @@ def print_trainable_parameters(model) -> str:
     return f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param:.2f}"
 
 
-def save_best_checkpoint(
+def save_checkpoint(
     epoch,
     G,
     F,
@@ -59,9 +60,10 @@ def save_best_checkpoint(
     sched_F,
     sched_DX,
     sched_DY,  # schedulers
+    kind: str = "best",
 ):
     """Overwrite the single best‐ever checkpoint."""
-    ckpt_dir = Path(__file__).resolve().parents[2] / "outputs/checkpoints/"
+    ckpt_dir = Path(__file__).resolve().parents[2] / "outputs/checkpoints"
     os.makedirs(ckpt_dir, exist_ok=True)
 
     state = {
@@ -79,10 +81,23 @@ def save_best_checkpoint(
         "sched_DX": sched_DX.state_dict(),
         "sched_DY": sched_DY.state_dict(),
     }
-
-    filename = os.path.join(ckpt_dir, "best.pth")
-    torch.save(state, filename)
-    logger.info(f"Saved best checkpoint: {filename}")
+    
+    if kind == "best":
+        filename = os.path.join(ckpt_dir, "best.pth")
+        torch.save(state, filename)
+        logger.info(f"Saved best checkpoint: {filename}")
+    elif kind == "latest":
+        new_latest = ckpt_dir / f"epoch_{epoch:04d}.pth"
+        torch.save(state, new_latest)
+        
+        # remove previous epoch_*.pth checkpoints
+        for f in ckpt_dir.glob("epoch_*.pth"):
+            if f != new_latest:
+                f.unlink(missing_ok=True)
+        
+        logger.info(f"Saved latest checkpoint: {new_latest}")
+    else:
+        raise ValueError(f"kind must be 'best' or 'latest', got {kind}")
 
 
 def generate_and_save_samples(
