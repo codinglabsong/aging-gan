@@ -383,7 +383,7 @@ def perform_epoch(
         )
         # Print statistics and generate iamge after every n-th batch
         if batch_no % cfg.steps_for_logging_metrics == 0:
-            epoch_float = epoch + batch_no / batches_per_epoch
+            epoch_float = epoch + (batch_no + 1) / batches_per_epoch
             logger.info(
                 f"train/loss_DX: {train_metrics['train/loss_DX']:.4f} | train/loss_DY: {train_metrics['train/loss_DY']:.4f} | train/loss_gen_total: {train_metrics['train/loss_gen_total']:.4f} | train/loss_g_adv: {train_metrics['train/loss_g_adv']:.4f} | train/loss_f_adv: {train_metrics['train/loss_f_adv']:.4f} | train/loss_cyc: {train_metrics['train/loss_cyc']:.4f} | train/loss_id: {train_metrics['train/loss_id']:.4f}"
             )
