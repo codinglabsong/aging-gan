@@ -1,3 +1,4 @@
+import os
 import argparse
 import logging
 import torch
@@ -29,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for optimizer.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=4, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=2, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
@@ -40,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=8,
+        default=4,
         help="Batch size per device during evaluation.",
     )
 
@@ -338,6 +339,8 @@ def perform_epoch(
     sched_F.step()
     sched_DX.step()
     sched_DY.step()
+    # log current LR
+    wandb.log({"train/current_lr": sched_G.get_last_lr()[0]})
     
     # EVALUATION
     logger.info("Evlauating...")
@@ -451,7 +454,23 @@ def main() -> None:
             
     # ---------- Test ----------
     if cfg.do_test:
-        logger.info("Running final test-set evaluation...")
+        logger.info("Running final test-set evaluation on best checkpoint...")
+        best_ckpt_path = os.path.join(os.path.dirname(__file__), "..", "..", "outputs/checkpoints/best.pth")
+        best_ckpt = torch.load(best_ckpt_path, map_location=get_device())
+        
+        # load the best weights into each model
+        G.load_state_dict(best_ckpt["G"])
+        F.load_state_dict(best_ckpt["F"])
+        DX.load_state_dict(best_ckpt["DX"])
+        DY.load_state_dict(best_ckpt["DY"])
+        
+        # change to eval mode
+        G.eval()
+        F.eval()
+        DX.eval()
+        DY.eval()
+        
+        # evaluate on test set
         test_metrics = evaluate_epoch(
             G, F, # generator models
             DX, DY, # discriminator models
@@ -460,7 +479,7 @@ def main() -> None:
             bce, l1, lambda_cyc, lambda_id, # loss functions and loss params
             fid_metric, # evaluation metric
         )
-        logger.info(f"Test metrics:\n{test_metrics}")
+        logger.info(f"Test metrics (best.pth):\n{test_metrics}")
         wandb.log(test_metrics)
     else:
         logger.info("Skipping test evaluation...")
