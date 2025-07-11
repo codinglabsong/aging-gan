@@ -9,6 +9,7 @@ from accelerate import Accelerator
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from torchmetrics.image.fid import FrechetInceptionDistance
+from torch.nn.utils import clip_grad_norm_
 
 
 from aging_gan.utils import set_seed, load_environ_vars, print_trainable_parameters, save_best_checkpoint, generate_and_save_samples, get_device
@@ -162,30 +163,26 @@ def perform_train_step(
     # DX: real young vs fake young
     opt_DX.zero_grad(set_to_none=True) 
     real_logits = DX(x)
-    real_targets = torch.ones_like(real_logits)
-    real_loss = bce(real_logits, real_targets)
-    
+    real_loss = bce(real_logits, torch.ones_like(real_logits))
     fake_logits = DX(fake_x.detach())
-    fake_targets = torch.zeros_like(fake_logits)
-    fake_loss = bce(fake_logits, fake_targets)
-
-    # DX loss + backprop + step
+    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+    # DX loss + backprop + grad norm + step
     loss_DX = 0.5 * (real_loss + fake_loss)
     accelerator.backward(loss_DX)
+    accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
     opt_DX.step()
+    
     # DY: real old vs fake old
     opt_DY.zero_grad(set_to_none=True) 
     real_logits = DY(y)
-    real_targets = torch.ones_like(real_logits)
-    real_loss = bce(real_logits, real_targets)
-    
+    real_loss = bce(real_logits, torch.ones_like(real_logits))
     fake_logits = DY(fake_y.detach())
-    fake_targets = torch.zeros_like(fake_logits)
-    fake_loss = bce(fake_logits, fake_targets)
+    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
 
-    # DY loss + backprop + step
+    # DY loss + backprop + grad norm + step
     loss_DY = 0.5 * (real_loss + fake_loss) # average loss to prevent discriminator learning "too quickly" compread to generators.
-    accelerator.backward(loss_DY)
+    accelerator.backward(loss_DY)    
+    accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
     opt_DY.step()
     
     # ------ Update Generators ------
@@ -204,8 +201,10 @@ def perform_train_step(
     # Total loss
     loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
-    # Backprop + step
+    # Backprop + grad norm + step
     accelerator.backward(loss_gen_total)
+    accelerator.clip_grad_norm_(G.parameters(), max_norm=1.0)
+    accelerator.clip_grad_norm_(F.parameters(), max_norm=1.0)
     opt_G.step()
     opt_F.step()
     
@@ -252,23 +251,19 @@ def evaluate_epoch(
             # ------ Evaluate Discriminators ------
             # DX: real young vs fake young
             real_logits = DX(x)
-            real_targets = torch.ones_like(real_logits)
-            real_loss = bce(real_logits, real_targets)
+            real_loss = bce(real_logits, torch.ones_like(real_logits))
             
             fake_logits = DX(fake_x)
-            fake_targets = torch.zeros_like(fake_logits)
-            fake_loss = bce(fake_logits, fake_targets)
+            fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
             # DX loss
             loss_DX = 0.5 * (real_loss + fake_loss)
             
             # DY: real old vs fake old
             real_logits = DY(y)
-            real_targets = torch.ones_like(real_logits)
-            real_loss = bce(real_logits, real_targets)
+            real_loss = bce(real_logits, torch.ones_like(real_logits))
             
             fake_logits = DY(fake_y)
-            fake_targets = torch.zeros_like(fake_logits)
-            fake_loss = bce(fake_logits, fake_targets)
+            fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
 
             # DY loss
             loss_DY = 0.5 * (real_loss + fake_loss) # average loss to prevent discriminator learning "too quickly" compread to generators.
