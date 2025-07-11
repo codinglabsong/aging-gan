@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--steps_for_logging_metrics",
         type=int,
-        default=1,
+        default=4,
         help="Print training metrics after certain batch steps.",
     )
     p.add_argument(
@@ -76,19 +76,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_size",
         type=int,
-        default=8,
+        default=20,
         help="The size of train dataset to train on.",
     )
     p.add_argument(
         "--val_size",
         type=int,
-        default=4,
+        default=10,
         help="The size of validation dataset to evaluate.",
     )
     p.add_argument(
         "--test_size",
         type=int,
-        default=4,
+        default=10,
         help="The size of test dataset to evaluate.",
     )
     p.add_argument(
@@ -530,7 +530,7 @@ def main() -> None:
             logger.info("Unfreezing encoders of generators...")
             unfreeze_encoders(G, F)
             logger.info("Parameters of generator G after unfreezing:")
-            print_trainable_parameters(G)
+            logger.info(print_trainable_parameters(G))
 
         val_metrics = perform_epoch(
             cfg,
