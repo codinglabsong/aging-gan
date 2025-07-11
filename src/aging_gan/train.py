@@ -1,10 +1,10 @@
 import argparse
-from accelerate import Accelerator
 import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+from accelerate import Accelerator
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from torchmetrics.image.fid import FrechetInceptionDistance
@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
         help="Batch size per device during evaluation.",
     )
 
-    # other client params
+    # other params
     p.add_argument(
         "--set_seed",
         action="store_true", # default=False
@@ -54,10 +54,16 @@ def parse_args() -> argparse.Namespace:
         "--seed", type=int, default=42, help="Random seed value for reproducibility."
     )
     p.add_argument(
-        "--steps_for_logging_metrics", type=int, default=10, help="Print training metrics after certain batch steps."
+        "--steps_for_logging_metrics", type=int, default=2, help="Print training metrics after certain batch steps."
     )
     p.add_argument(
         "--num_sample_generations_to_save", type=int, default=8, help="The number of example generated images to save per epoch."
+    )
+    p.add_argument(
+        "--num_workers",
+        type=int,
+        default=1,
+        help="Number of workers for dataloaders.",
     )
     p.add_argument(
         "--skip_test",
@@ -377,18 +383,20 @@ def main() -> None:
         logger.info(f"Skipping setting seed...")
         
     # ---------- Data Preprocessing ----------
-    train_loader, val_loader, test_loader = prepare_dataset()
+    train_loader, val_loader, test_loader = prepare_dataset(
+        cfg.train_batch_size, cfg.eval_batch_size, cfg.num_workers
+    )
     
     # ---------- Models, Optimizers, Loss Functions, Schedulers Initialization ----------
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
     # Freeze generator encoderes for training during early epochs
     logger.info("Parameters of generator G:")
-    print_trainable_parameters(G)
+    logger.info(print_trainable_parameters(G))
     logger.info("Freezing encoders of generators...")
     freeze_encoders(G, F)
     logger.info("Parameters of generator G after freezing:")
-    print_trainable_parameters(G)
+    logger.info(print_trainable_parameters(G))
     # Initialize optimizers
     opt_G, opt_F, opt_DX, opt_DY, = initialize_optimizers(cfg, G, F, DX, DY)  
     # Prepare Accelerator (uses hf accelerate to move models to correct device,
@@ -409,7 +417,7 @@ def main() -> None:
     # ---------- Train, Evaluate, & Checkpoint ----------
     best_fid = float("inf") # keep track of the best FID score for each epoch
     for epoch in range(1, cfg.num_train_epochs+1):
-        logger.info(f"\nStarting epoch {epoch}...")
+        logger.info(f"\nEPOCH {epoch}")
         # after 1 full epoch, unfreeze
         if epoch == 2:
             logger.info("Unfreezing encoders of generators...")

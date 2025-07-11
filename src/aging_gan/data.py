@@ -9,7 +9,14 @@ from torchvision.datasets import CelebA
 logger = logging.getLogger(__name__)
 
 
-def make_unpaired_loader(root, split, transform, batch_size=4, num_workers=1, limit=None):
+def make_unpaired_loader(
+    root, 
+    split, 
+    transform, 
+    batch_size=4, 
+    num_workers=1, 
+    limit=None
+):
     # download split
     full = CelebA(
         root=root,
@@ -55,16 +62,21 @@ def make_unpaired_loader(root, split, transform, batch_size=4, num_workers=1, li
     logger.info(f"- Finished spliting: {split} ({limit} examples)")
     return DataLoader(
         paired, batch_size=batch_size, shuffle=(split=="train"),
-        num_workers=num_workers, pin_memory=True, drop_last=(split=="train")
+        drop_last=(split=="train"),
+        num_workers=num_workers, 
+        pin_memory=True,
     )
 
 
 def prepare_dataset(
+    train_batch_size: int = 4,
+    eval_batch_size: int = 8,
+    num_workers: int = 1,
     center_crop_size: int = 178,
     resize_size: int = 256,
-    train_size: int = 20,
-    val_size: int = 4,
-    test_size: int = 4,
+    train_size: int = 10,
+    val_size: int = 8,
+    test_size: int = 8,
 ):
     data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data")
     
@@ -78,8 +90,8 @@ def prepare_dataset(
     
     # loaders
     logger.info("Initializing dataset...")
-    train_loader = make_unpaired_loader(str(data_dir), "train", transform, limit=train_size)
-    val_loader = make_unpaired_loader(str(data_dir), "valid", transform, limit=val_size)
-    test_loader = make_unpaired_loader(str(data_dir), "test", transform, limit=test_size)
+    train_loader = make_unpaired_loader(str(data_dir), "train", transform, train_batch_size, num_workers, train_size)
+    val_loader = make_unpaired_loader(str(data_dir), "valid", transform, eval_batch_size, num_workers, val_size)
+    test_loader = make_unpaired_loader(str(data_dir), "test", transform, eval_batch_size, num_workers, test_size)
     logger.info("Done.")
     return train_loader, val_loader, test_loader

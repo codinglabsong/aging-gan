@@ -92,17 +92,17 @@ def generate_and_save_samples(
     outputs = (outputs * 0.5) + 0.5
     
     # build figure
-    fig, axes = plt.subplots(num_samples, 2, figsize=(4, 2*num_samples), dpi=100)
+    fig, axes = plt.subplots(2, num_samples, figsize=(2*num_samples, 4), dpi=100)
     for i in range(num_samples):
         # original
-        ax = axes[i, 0]
+        ax = axes[0, i]
         img = inputs[i].cpu().permute(1,2,0).clamp(0,1).numpy()
         ax.imshow(img)
         ax.set_title("Input")
         ax.axis("off")
         
         # generated
-        ax = axes[i, 1]
+        ax = axes[1, i]
         gen = outputs[i].cpu().permute(1,2,0).clamp(0,1).numpy()
         ax.imshow(gen)
         ax.set_title("Generated")
@@ -114,7 +114,7 @@ def generate_and_save_samples(
     filename = os.path.join(out_dir, f"epoch{epoch}_batch_no{batch_no:03d}.jpg")
     
     plt.tight_layout()
-    plt.savefig(filename, format="jpeg", quality=90, optimize=True)
+    plt.savefig(filename, format="jpeg")
     plt.close(fig)
     
     # set to training mode before exiting

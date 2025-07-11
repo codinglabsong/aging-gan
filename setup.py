@@ -18,6 +18,6 @@ setup(
         "segmentation-models-pytorch",
         "gdown",
         "tqdm",
-        "torchmetrics",
+        "torchmetrics[image]",
     ],
 )
