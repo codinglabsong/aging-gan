@@ -460,7 +460,9 @@ def main() -> None:
         logger.info(f"Set seed: {cfg.seed}")
     else:
         logger.info("Skipping setting seed...")
-
+    # speedups (Enable cuDNN auto-tuner which is good for fixed input shapes)
+    torch.backends.cudnn.benchmark = True
+    
     # ---------- Data Preprocessing ----------
     train_loader, val_loader, test_loader = prepare_dataset(
         cfg.train_batch_size,

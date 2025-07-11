@@ -63,6 +63,8 @@ def make_unpaired_loader(
         drop_last=(split == "train"),
         num_workers=num_workers,
         pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4,
     )
 
 
