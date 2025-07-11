@@ -4,7 +4,10 @@ import random
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from dotenv import load_dotenv
 from pathlib import Path
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
