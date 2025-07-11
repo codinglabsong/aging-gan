@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for optimizer.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=1, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=2, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
@@ -448,10 +448,10 @@ def main() -> None:
             k: v for k, v in vars(cfg).items() if not k.startswith("_")
         },  # drop python's or "private" framework-internal attributes
     )
-    wandb.define_metric("epoch_float") # defaults main metric to epoch floats rather than steps
-    wandb.define_metric("train/*", step_metric="epoch_float")
-    wandb.define_metric("val/*", step_metric="epoch_float")
-    wandb.define_metric("test/*", step_metric="epoch_float")
+    wandb.define_metric("train/epoch_float") # defaults main metric to epoch floats rather than steps
+    wandb.define_metric("train/*", step_metric="train/epoch_float")
+    wandb.define_metric("val/*", step_metric="train/epoch_float")
+    wandb.define_metric("test/*", step_metric="train/epoch_float")
     # choose device
     logger.info(f"Using: {get_device()}")
     # reproducibility (optional, but less efficient if set)
