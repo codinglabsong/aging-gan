@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for optimizer.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=150, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=50, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
