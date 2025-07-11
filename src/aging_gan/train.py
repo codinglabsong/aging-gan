@@ -37,18 +37,18 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for optimizer.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=2, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=1, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=4,
+        default=32,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=4,
+        default=64,
         help="Batch size per device during evaluation.",
     )
 
@@ -64,31 +64,31 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--steps_for_logging_metrics",
         type=int,
-        default=4,
+        default=1,
         help="Print training metrics after certain batch steps.",
     )
     p.add_argument(
         "--num_sample_generations_to_save",
         type=int,
-        default=4,
+        default=8,
         help="The number of example generated images to save per epoch.",
     )
     p.add_argument(
         "--train_size",
         type=int,
-        default=20,
+        default=100,
         help="The size of train dataset to train on.",
     )
     p.add_argument(
         "--val_size",
         type=int,
-        default=10,
+        default=20,
         help="The size of validation dataset to evaluate.",
     )
     p.add_argument(
         "--test_size",
         type=int,
-        default=10,
+        default=20,
         help="The size of test dataset to evaluate.",
     )
     p.add_argument(
@@ -363,6 +363,7 @@ def perform_epoch(
     F.train()
     DX.train()
     DY.train()
+    batches_per_epoch = len(train_loader)
     for batch_no, real_data in enumerate(tqdm(train_loader)):
         train_metrics = perform_train_step(
             G,
@@ -382,9 +383,11 @@ def perform_epoch(
         )
         # Print statistics and generate iamge after every n-th batch
         if batch_no % cfg.steps_for_logging_metrics == 0:
+            epoch_float = epoch + batch_no / batches_per_epoch
             logger.info(
                 f"train/loss_DX: {train_metrics['train/loss_DX']:.4f} | train/loss_DY: {train_metrics['train/loss_DY']:.4f} | train/loss_gen_total: {train_metrics['train/loss_gen_total']:.4f} | train/loss_g_adv: {train_metrics['train/loss_g_adv']:.4f} | train/loss_f_adv: {train_metrics['train/loss_f_adv']:.4f} | train/loss_cyc: {train_metrics['train/loss_cyc']:.4f} | train/loss_id: {train_metrics['train/loss_id']:.4f}"
             )
+            train_metrics["train/epoch_float"] = epoch_float
             wandb.log(train_metrics)
     # Step schedulers per epoch
     sched_G.step()
@@ -445,6 +448,10 @@ def main() -> None:
             k: v for k, v in vars(cfg).items() if not k.startswith("_")
         },  # drop python's or "private" framework-internal attributes
     )
+    wandb.define_metric("epoch_float") # defaults main metric to epoch floats rather than steps
+    wandb.define_metric("train/*", step_metric="epoch_float")
+    wandb.define_metric("val/*", step_metric="epoch_float")
+    wandb.define_metric("test/*", step_metric="epoch_float")
     # choose device
     logger.info(f"Using: {get_device()}")
     # reproducibility (optional, but less efficient if set)
