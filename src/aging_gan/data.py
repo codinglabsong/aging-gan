@@ -71,7 +71,7 @@ def make_unpaired_loader(
 def prepare_dataset(
     train_batch_size: int = 4,
     eval_batch_size: int = 8,
-    num_workers: int = 1,
+    num_workers: int = 2,
     center_crop_size: int = 178,
     resize_size: int = 256,
     train_size: int = 10,

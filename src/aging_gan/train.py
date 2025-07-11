@@ -30,7 +30,10 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for optimizer.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=2, help="Number of training epochs."
+        "--num_train_epochs", 
+        type=int, 
+        default=2, 
+        help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
@@ -55,15 +58,33 @@ def parse_args() -> argparse.Namespace:
         "--seed", type=int, default=42, help="Random seed value for reproducibility."
     )
     p.add_argument(
-        "--steps_for_logging_metrics", type=int, default=2, help="Print training metrics after certain batch steps."
+        "--steps_for_logging_metrics", type=int, default=1, help="Print training metrics after certain batch steps."
     )
     p.add_argument(
-        "--num_sample_generations_to_save", type=int, default=8, help="The number of example generated images to save per epoch."
+        "--num_sample_generations_to_save", type=int, default=4, help="The number of example generated images to save per epoch."
+    )
+    p.add_argument(
+        "--train_size",
+        type=int,
+        default=8,
+        help="The size of train dataset to train on.",
+    )
+    p.add_argument(
+        "--val_size",
+        type=int,
+        default=4,
+        help="The size of validation dataset to evaluate.",
+    )
+    p.add_argument(
+        "--test_size",
+        type=int,
+        default=4,
+        help="The size of test dataset to evaluate.",
     )
     p.add_argument(
         "--num_workers",
         type=int,
-        default=1,
+        default=2,
         help="Number of workers for dataloaders.",
     )
     p.add_argument(
@@ -387,7 +408,8 @@ def main() -> None:
         
     # ---------- Data Preprocessing ----------
     train_loader, val_loader, test_loader = prepare_dataset(
-        cfg.train_batch_size, cfg.eval_batch_size, cfg.num_workers
+        cfg.train_batch_size, cfg.eval_batch_size, cfg.num_workers,
+        train_size=cfg.train_size, val_size=cfg.val_size, test_size=cfg.test_size
     )
     
     # ---------- Models, Optimizers, Loss Functions, Schedulers Initialization ----------
