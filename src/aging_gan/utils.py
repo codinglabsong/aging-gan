@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,7 @@ def save_best_checkpoint(
     sched_DY,  # schedulers
 ):
     """Overwrite the single best‐ever checkpoint."""
-    ckpt_dir = os.path.join(
-        os.path.dirname(__file__), "..", "..", "outputs/checkpoints/"
-    )
+    ckpt_dir = Path(__file__).resolve().parents[2] / "outputs/checkpoints/"
     os.makedirs(ckpt_dir, exist_ok=True)
 
     state = {
@@ -87,13 +86,9 @@ def generate_and_save_samples(
     generator,
     val_loader,
     epoch,
-    batch_no: int,
     device: torch.device,
     num_samples: int = 8,
 ):
-    # set to evaluation mode
-    generator.eval()
-
     # grab one batch
     inputs, _ = next(iter(val_loader))
     inputs = inputs.to(device)[:num_samples]
@@ -122,13 +117,10 @@ def generate_and_save_samples(
         ax.axis("off")
 
     # ensure output directory exists
-    out_dir = os.path.join(os.path.dirname(__file__), "..", "..", "outputs/images/")
+    out_dir = Path(__file__).resolve().parents[2] / "outputs/images/"
     os.makedirs(out_dir, exist_ok=True)
-    filename = os.path.join(out_dir, f"epoch{epoch}_batch_no{batch_no:03d}.jpg")
+    filename = os.path.join(out_dir, f"epoch{epoch}.jpg")
 
     plt.tight_layout()
     plt.savefig(filename, format="jpeg")
     plt.close(fig)
-
-    # set to training mode before exiting
-    generator.train()

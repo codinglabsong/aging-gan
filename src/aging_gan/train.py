@@ -1,4 +1,3 @@
-import os
 import argparse
 import logging
 import torch
@@ -9,6 +8,7 @@ from accelerate import Accelerator
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from torchmetrics.image.fid import FrechetInceptionDistance
+from pathlib import Path
 
 
 from aging_gan.utils import (
@@ -219,8 +219,9 @@ def perform_train_step(
 
     # Backprop + grad norm + step
     accelerator.backward(loss_gen_total)
-    accelerator.clip_grad_norm_(G.parameters(), max_norm=1.0)
-    accelerator.clip_grad_norm_(F.parameters(), max_norm=1.0)
+    accelerator.clip_grad_norm_(
+        list(G.parameters()) + list(F.parameters()), max_norm=1.0
+    )
     opt_G.step()
     opt_F.step()
 
@@ -305,8 +306,9 @@ def evaluate_epoch(
             # Total loss
             loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
             # FID metric (normalize to range of [0,1] from [-1,1])
-            fid_metric.update(y * 0.5 + 0.5, real=True)
-            fid_metric.update(fake_y * 0.5 + 0.5, real=False)
+            # FID expects float32 images, which can raise dtype warning for mixed precision batches unless converted.
+            fid_metric.update((y * 0.5 + 0.5).float(), real=True)
+            fid_metric.update((fake_y * 0.5 + 0.5).float(), real=False)
 
             # ------ Accumulate ------
             metrics[f"{split}/loss_DX"] += loss_DX.item()
@@ -384,15 +386,6 @@ def perform_epoch(
                 f"train/loss_DX: {train_metrics['train/loss_DX']:.4f} | train/loss_DY: {train_metrics['train/loss_DY']:.4f} | train/loss_gen_total: {train_metrics['train/loss_gen_total']:.4f} | train/loss_g_adv: {train_metrics['train/loss_g_adv']:.4f} | train/loss_f_adv: {train_metrics['train/loss_f_adv']:.4f} | train/loss_cyc: {train_metrics['train/loss_cyc']:.4f} | train/loss_id: {train_metrics['train/loss_id']:.4f}"
             )
             wandb.log(train_metrics)
-            # save example generated images
-            generate_and_save_samples(
-                G,
-                val_loader,
-                epoch,
-                batch_no,
-                get_device(),
-                cfg.num_sample_generations_to_save,
-            )
     # Step schedulers per epoch
     sched_G.step()
     sched_F.step()
@@ -424,6 +417,14 @@ def perform_epoch(
         f"val/loss_DX: {val_metrics['val/loss_DX']:.4f} | val/loss_DY: {val_metrics['val/loss_DY']:.4f} | val/fid_val: {val_metrics['val/fid_val']:.4f} | val/loss_gen_total: {val_metrics['val/loss_gen_total']:.4f} | val/loss_g_adv: {val_metrics['val/loss_g_adv']:.4f} | val/loss_f_adv: {val_metrics['val/loss_f_adv']:.4f} | val/loss_cyc: {val_metrics['val/loss_cyc']:.4f} | val/loss_id: {val_metrics['val/loss_id']:.4f}"
     )
     wandb.log(val_metrics)
+    # save example generated images
+    generate_and_save_samples(
+        G,
+        val_loader,
+        epoch,
+        get_device(),
+        cfg.num_sample_generations_to_save,
+    )
     # Clear memory after every epoch
     torch.cuda.empty_cache()
 
@@ -461,6 +462,7 @@ def main() -> None:
         train_size=cfg.train_size,
         val_size=cfg.val_size,
         test_size=cfg.test_size,
+        seed=cfg.seed,
     )
 
     # ---------- Models, Optimizers, Loss Functions, Schedulers Initialization ----------
@@ -483,10 +485,30 @@ def main() -> None:
     # Prepare Accelerator (uses hf accelerate to move models to correct device,
     # wrap in DDP if needed, shard the dataloader, and enable mixed-precision).
     accelerator = Accelerator(mixed_precision="fp16")
-    G, F, DX, DY, opt_G, opt_F, opt_DX, opt_DY, train_loader, val_loader = (
-        accelerator.prepare(
-            G, F, DX, DY, opt_G, opt_F, opt_DX, opt_DY, train_loader, val_loader
-        )
+    (
+        G,
+        F,
+        DX,
+        DY,
+        opt_G,
+        opt_F,
+        opt_DX,
+        opt_DY,
+        train_loader,
+        val_loader,
+        test_loader,
+    ) = accelerator.prepare(
+        G,
+        F,
+        DX,
+        DY,
+        opt_G,
+        opt_F,
+        opt_DX,
+        opt_DY,
+        train_loader,
+        val_loader,
+        test_loader,
     )
     # Loss functions and scalers
     bce, l1, lambda_cyc, lambda_id = initialize_loss_functions()
@@ -556,16 +578,17 @@ def main() -> None:
     # ---------- Test ----------
     if cfg.do_test:
         logger.info("Running final test-set evaluation on best checkpoint...")
-        best_ckpt_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "outputs/checkpoints/best.pth"
+        best_ckpt_path = (
+            Path(__file__).resolve().parents[2] / "outputs/checkpoints/best.pth"
         )
         best_ckpt = torch.load(best_ckpt_path, map_location=get_device())
 
         # load the best weights into each model
-        G.load_state_dict(best_ckpt["G"])
-        F.load_state_dict(best_ckpt["F"])
-        DX.load_state_dict(best_ckpt["DX"])
-        DY.load_state_dict(best_ckpt["DY"])
+        # unwrap models first so that the weights are loaded into the actual modules, not the DDP wrapper
+        accelerator.unwrap_model(G).load_state_dict(best_ckpt["G"])
+        accelerator.unwrap_model(F).load_state_dict(best_ckpt["F"])
+        accelerator.unwrap_model(DX).load_state_dict(best_ckpt["DX"])
+        accelerator.unwrap_model(DY).load_state_dict(best_ckpt["DY"])
 
         # change to eval mode
         G.eval()

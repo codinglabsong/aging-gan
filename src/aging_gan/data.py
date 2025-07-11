@@ -5,12 +5,13 @@ from torch.utils.data import DataLoader, Subset, Dataset
 import torchvision.transforms as T
 from dataclasses import dataclass
 from torchvision.datasets import CelebA
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 def make_unpaired_loader(
-    root, split, transform, batch_size=4, num_workers=1, limit=None
+    root, split, transform, batch_size=4, num_workers=1, limit=None, seed=42
 ):
     # download split
     full = CelebA(
@@ -29,7 +30,7 @@ def make_unpaired_loader(
 
     # limit each domain samples
     if limit is not None:
-        gen = torch.Generator()
+        gen = torch.Generator().manual_seed(seed)
         perm_y = torch.randperm(len(young_idx), generator=gen)[:limit]
         perm_o = torch.randperm(len(old_idx), generator=gen)[:limit]
         young_idx = young_idx[perm_y]
@@ -74,8 +75,10 @@ def prepare_dataset(
     train_size: int = 10,
     val_size: int = 8,
     test_size: int = 8,
+    seed: int = 42,
 ):
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+    data_dir = Path(__file__).resolve().parents[2] / "data"
+    os.makedirs(data_dir, exist_ok=True)
 
     transform = T.Compose(
         [
@@ -89,13 +92,19 @@ def prepare_dataset(
     # loaders
     logger.info("Initializing dataset...")
     train_loader = make_unpaired_loader(
-        str(data_dir), "train", transform, train_batch_size, num_workers, train_size
+        str(data_dir),
+        "train",
+        transform,
+        train_batch_size,
+        num_workers,
+        train_size,
+        seed,
     )
     val_loader = make_unpaired_loader(
-        str(data_dir), "valid", transform, eval_batch_size, num_workers, val_size
+        str(data_dir), "valid", transform, eval_batch_size, num_workers, val_size, seed
     )
     test_loader = make_unpaired_loader(
-        str(data_dir), "test", transform, eval_batch_size, num_workers, test_size
+        str(data_dir), "test", transform, eval_batch_size, num_workers, test_size, seed
     )
     logger.info("Done.")
     return train_loader, val_loader, test_loader
