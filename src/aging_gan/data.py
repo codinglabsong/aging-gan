@@ -89,6 +89,7 @@ def prepare_dataset(
             T.RandomHorizontalFlip(0.5),
             T.ColorJitter(0.1, 0.1, 0.1, 0.05),
             T.ToTensor(),
+            T.RandomErasing(p=0.3, value='random'),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
     )
