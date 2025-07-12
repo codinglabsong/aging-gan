@@ -8,27 +8,28 @@ class PatchDiscriminator(nn.Module):
     def __init__(self, in_channels=3, ndf=64):
         super().__init__()
         layers = [
-            nn.Conv2d(
-                in_channels=in_channels,
-                out_channels=ndf,
-                kernel_size=4,
-                stride=2,
-                padding=1,
+            nn_utils.spectral_norm(
+                nn.Conv2d(
+                    in_channels=in_channels,
+                    out_channels=ndf,
+                    kernel_size=4,
+                    stride=2,
+                    padding=1,
+                )
             ),
-            nn_utils.spectral_norm(nn.Conv2d(in_channels, ndf, 4, 2, 1)),
             nn.LeakyReLU(0.2),
         ]
         nf = ndf
         for i in range(3):
             stride = 2 if i < 2 else 1
             layers += [
-                nn.Conv2d(nf, nf * 2, 4, stride, 1),
-                nn_utils.spectral_norm(nn.Conv2d(nf, nf * 2, 4, stride, 1)),
+                nn_utils.spectral_norm(
+                    nn.Conv2d(nf, nf * 2, 4, stride, 1)
+                ),
                 nn.InstanceNorm2d(nf * 2),
                 nn.LeakyReLU(0.2),
             ]
             nf *= 2
-        layers += [nn.Conv2d(nf, 1, 4, 1, 1)]
         layers += [nn_utils.spectral_norm(nn.Conv2d(nf, 1, 4, 1, 1))]
         self.model = nn.Sequential(*layers)
 
