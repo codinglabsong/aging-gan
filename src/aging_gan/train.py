@@ -39,11 +39,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--disc_lr",
         type=float,
-        default=1e-4,
+        default=2e-4,
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=50, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=10, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
