@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--disc_lr",
         type=float,
-        default=3e-4,
+        default=1.7e-4,
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
