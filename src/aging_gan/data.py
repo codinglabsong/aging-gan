@@ -55,7 +55,7 @@ def make_unpaired_loader(
             return x, y
 
     paired = Unpaired(young_ds, old_ds)
-    logger.info(f"- Finished spliting: {split} ({limit} examples)")
+    logger.info(f"- Finished spliting: {split} ({len(young_ds)} young + {len(old_ds)} old examples)")
     return DataLoader(
         paired,
         batch_size=batch_size,
