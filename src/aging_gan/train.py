@@ -212,7 +212,7 @@ def perform_train_step(
     opt_DY.step()
 
     # ------ Update Generators ------
-    for _ in range(cfg.gen_steps):
+    for step in range(cfg.gen_steps):
         opt_G.zero_grad(set_to_none=True)
         opt_F.zero_grad(set_to_none=True)
         # Loss 1: adversarial terms
@@ -229,7 +229,8 @@ def perform_train_step(
         loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
         # Backprop + grad norm + step
-        accelerator.backward(loss_gen_total)
+        retain = step < cfg.gen_steps - 1 # keep graph until last step
+        accelerator.backward(loss_gen_total, retain_graph=retain)
         accelerator.clip_grad_norm_(
             list(G.parameters()) + list(F.parameters()), max_norm=1.0
         )
