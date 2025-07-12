@@ -215,6 +215,11 @@ def perform_train_step(
     for step in range(cfg.gen_steps):
         opt_G.zero_grad(set_to_none=True)
         opt_F.zero_grad(set_to_none=True)
+        # Generate fakes and reconstrucitons
+        fake_x = F(y)
+        fake_y = G(x)
+        rec_x = F(fake_y)
+        rec_y = G(fake_x)
         # Loss 1: adversarial terms
         fake_test_logits = DX(fake_x)  # fake x logits
         loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
@@ -229,8 +234,7 @@ def perform_train_step(
         loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
         # Backprop + grad norm + step
-        retain = step < cfg.gen_steps - 1 # keep graph until last step
-        accelerator.backward(loss_gen_total, retain_graph=retain)
+        accelerator.backward(loss_gen_total)
         accelerator.clip_grad_norm_(
             list(G.parameters()) + list(F.parameters()), max_norm=1.0
         )
