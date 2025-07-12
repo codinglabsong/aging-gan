@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch.nn.utils as nn_utils
 import segmentation_models_pytorch as smp
 
 
@@ -14,6 +15,7 @@ class PatchDiscriminator(nn.Module):
                 stride=2,
                 padding=1,
             ),
+            nn_utils.spectral_norm(nn.Conv2d(in_channels, ndf, 4, 2, 1)),
             nn.LeakyReLU(0.2),
         ]
         nf = ndf
@@ -21,11 +23,13 @@ class PatchDiscriminator(nn.Module):
             stride = 2 if i < 2 else 1
             layers += [
                 nn.Conv2d(nf, nf * 2, 4, stride, 1),
+                nn_utils.spectral_norm(nn.Conv2d(nf, nf * 2, 4, stride, 1)),
                 nn.InstanceNorm2d(nf * 2),
                 nn.LeakyReLU(0.2),
             ]
             nf *= 2
         layers += [nn.Conv2d(nf, 1, 4, 1, 1)]
+        layers += [nn_utils.spectral_norm(nn.Conv2d(nf, 1, 4, 1, 1))]
         self.model = nn.Sequential(*layers)
 
     def forward(self, x):

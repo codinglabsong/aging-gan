@@ -31,10 +31,16 @@ def parse_args() -> argparse.Namespace:
 
     # hyperparams
     p.add_argument(
-        "--learning_rate",
+        "--gen_lr",
         type=float,
         default=2e-4,
-        help="Initial learning rate for optimizer.",
+        help="Initial learning rate for generators.",
+    )
+    p.add_argument(
+        "--disc_lr",
+        type=float,
+        default=1e-4,
+        help="Initial learning rate for discriminators.",
     )
     p.add_argument(
         "--num_train_epochs", type=int, default=50, help="Number of training epochs."
@@ -72,6 +78,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=8,
         help="The number of example generated images to save per epoch.",
+    )
+    p.add_argument(
+        "--gen_steps", type=int, default=2, help="How many generator updates per batch."
+    )
+    p.add_argument(
+        "--disc_steps",
+        type=int,
+        default=1,
+        help="How many discriminator updates per batch.",
     )
     p.add_argument(
         "--train_size",
@@ -114,15 +129,15 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     # track all generator params (even frozen encoder params during initial training).
     # This would allow us to transition easily to the full fine-tuning later on by simply toggling requires_grad=True
     # since the optimizers already track all the parameters from the start.
-    opt_G = optim.Adam(G.parameters(), lr=cfg.learning_rate, betas=(0.5, 0.999))
-    opt_F = optim.Adam(F.parameters(), lr=cfg.learning_rate, betas=(0.5, 0.999))
-    opt_DX = optim.Adam(DX.parameters(), lr=cfg.learning_rate, betas=(0.5, 0.999))
-    opt_DY = optim.Adam(DY.parameters(), lr=cfg.learning_rate, betas=(0.5, 0.999))
+    opt_G = optim.Adam(G.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999))
+    opt_F = optim.Adam(F.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999))
+    opt_DX = optim.Adam(DX.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999))
+    opt_DY = optim.Adam(DY.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999))
 
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 10.0, lambda_id_value: int = 5.0):
+def initialize_loss_functions(lambda_cyc_value: int = 10.0, lambda_id_value: int = 1.0):
     bce = nn.BCEWithLogitsLoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
@@ -139,8 +154,8 @@ def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
     def _lr_lambda(epoch):
         if epoch < start_decay:
             return 1.0
-        # linearly decay from 1.0 -> 0.0 from start_decay
-        return max(0.0, (n_epochs - epoch) / (n_epochs - start_decay))
+        # linearly decay from 1.0 -> 0.1 from start_decay, never to zero
+        return max(0.1, (n_epochs - epoch) / (n_epochs - start_decay) * 0.9 + 0.1)
 
     sched_G = LambdaLR(opt_G, lr_lambda=_lr_lambda)
     sched_F = LambdaLR(opt_F, lr_lambda=_lr_lambda)
@@ -151,6 +166,7 @@ def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
 
 
 def perform_train_step(
+    cfg,
     G,
     F,  # generator models
     DX,
@@ -174,56 +190,58 @@ def perform_train_step(
     rec_y = G(fake_x)
 
     # ------ Update Discriminators ------
-    # DX: real young vs fake young
-    opt_DX.zero_grad(set_to_none=True)
-    real_logits = DX(x)
-    real_loss = bce(real_logits, torch.ones_like(real_logits))
-    fake_logits = DX(fake_x.detach())
-    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
-    # DX loss + backprop + grad norm + step
-    loss_DX = 0.5 * (real_loss + fake_loss)
-    accelerator.backward(loss_DX)
-    accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
-    opt_DX.step()
+    for _ in range(cfg.disc_steps):  # update number per batch
+        # DX: real young vs fake young
+        opt_DX.zero_grad(set_to_none=True)
+        real_logits = DX(x)
+        real_loss = bce(real_logits, torch.ones_like(real_logits))
+        fake_logits = DX(fake_x.detach())
+        fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+        # DX loss + backprop + grad norm + step
+        loss_DX = 0.5 * (real_loss + fake_loss)
+        accelerator.backward(loss_DX)
+        accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
+        opt_DX.step()
 
-    # DY: real old vs fake old
-    opt_DY.zero_grad(set_to_none=True)
-    real_logits = DY(y)
-    real_loss = bce(real_logits, torch.ones_like(real_logits))
-    fake_logits = DY(fake_y.detach())
-    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+        # DY: real old vs fake old
+        opt_DY.zero_grad(set_to_none=True)
+        real_logits = DY(y)
+        real_loss = bce(real_logits, torch.ones_like(real_logits))
+        fake_logits = DY(fake_y.detach())
+        fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
 
-    # DY loss + backprop + grad norm + step
-    loss_DY = 0.5 * (
-        real_loss + fake_loss
-    )  # average loss to prevent discriminator learning "too quickly" compread to generators.
-    accelerator.backward(loss_DY)
-    accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
-    opt_DY.step()
+        # DY loss + backprop + grad norm + step
+        loss_DY = 0.5 * (
+            real_loss + fake_loss
+        )  # average loss to prevent discriminator learning "too quickly" compread to generators.
+        accelerator.backward(loss_DY)
+        accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
+        opt_DY.step()
 
     # ------ Update Generators ------
-    opt_G.zero_grad(set_to_none=True)
-    opt_F.zero_grad(set_to_none=True)
-    # Loss 1: adversarial terms
-    fake_test_logits = DX(fake_x)  # fake x logits
-    loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    for _ in range(cfg.gen_steps):
+        opt_G.zero_grad(set_to_none=True)
+        opt_F.zero_grad(set_to_none=True)
+        # Loss 1: adversarial terms
+        fake_test_logits = DX(fake_x)  # fake x logits
+        loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
 
-    fake_test_logits = DY(fake_y)  # fake y logits
-    loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
-    # Loss 2: cycle terms
-    loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
-    # Loss 3: identity terms
-    loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
-    # Total loss
-    loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+        fake_test_logits = DY(fake_y)  # fake y logits
+        loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+        # Loss 2: cycle terms
+        loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
+        # Loss 3: identity terms
+        loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+        # Total loss
+        loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
-    # Backprop + grad norm + step
-    accelerator.backward(loss_gen_total)
-    accelerator.clip_grad_norm_(
-        list(G.parameters()) + list(F.parameters()), max_norm=1.0
-    )
-    opt_G.step()
-    opt_F.step()
+        # Backprop + grad norm + step
+        accelerator.backward(loss_gen_total)
+        accelerator.clip_grad_norm_(
+            list(G.parameters()) + list(F.parameters()), max_norm=1.0
+        )
+        opt_G.step()
+        opt_F.step()
 
     return {
         "train/loss_DX": loss_DX.item(),
@@ -366,6 +384,7 @@ def perform_epoch(
     batches_per_epoch = len(train_loader)
     for batch_no, real_data in enumerate(tqdm(train_loader)):
         train_metrics = perform_train_step(
+            cfg,
             G,
             F,  # generator models
             DX,
@@ -394,8 +413,11 @@ def perform_epoch(
     sched_F.step()
     sched_DX.step()
     sched_DY.step()
-    # log current LR
-    wandb.log({"train/current_lr": sched_G.get_last_lr()[0]})
+    # log geneartor and discriminator LR
+    wandb.log({"train/current_G_lr": sched_G.get_last_lr()[0]})
+    wandb.log({"train/current_F_lr": sched_F.get_last_lr()[0]})
+    wandb.log({"train/current_DX_lr": sched_DX.get_last_lr()[0]})
+    wandb.log({"train/current_DY_lr": sched_DY.get_last_lr()[0]})
 
     # EVALUATION
     logger.info("Evlauating...")
@@ -448,7 +470,9 @@ def main() -> None:
             k: v for k, v in vars(cfg).items() if not k.startswith("_")
         },  # drop python's or "private" framework-internal attributes
     )
-    wandb.define_metric("train/epoch_float") # defaults main metric to epoch floats rather than steps
+    wandb.define_metric(
+        "train/epoch_float"
+    )  # defaults main metric to epoch floats rather than steps
     wandb.define_metric("train/*", step_metric="train/epoch_float")
     wandb.define_metric("val/*", step_metric="train/epoch_float")
     wandb.define_metric("test/*", step_metric="train/epoch_float")
@@ -462,7 +486,7 @@ def main() -> None:
         logger.info("Skipping setting seed...")
     # speedups (Enable cuDNN auto-tuner which is good for fixed input shapes)
     torch.backends.cudnn.benchmark = True
-    
+
     # ---------- Data Preprocessing ----------
     train_loader, val_loader, test_loader = prepare_dataset(
         cfg.train_batch_size,
@@ -582,7 +606,7 @@ def main() -> None:
                 sched_F,
                 sched_DX,
                 sched_DY,  # schedulers
-                "best"
+                "best",
             )
         # save the latest checkpoint
         save_checkpoint(
@@ -599,7 +623,7 @@ def main() -> None:
             sched_F,
             sched_DX,
             sched_DY,  # schedulers
-            "latest"
+            "latest",
         )
 
     # ---------- Test ----------

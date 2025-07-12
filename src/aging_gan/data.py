@@ -86,6 +86,8 @@ def prepare_dataset(
         [
             T.CenterCrop(center_crop_size),
             T.Resize(resize_size),
+            T.RandomHorizontalFlip(0.5),
+            T.ColorJitter(0.1, 0.1, 0.1, 0.05),
             T.ToTensor(),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]

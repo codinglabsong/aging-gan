@@ -1,3 +1,8 @@
+added spectral norm to path gan.
+learning reduces to 0.1
+different lr for gen and disc
+
+
 # Aging GAN
 
 Aging GAN is a research project exploring face aging with a CycleGAN-style architecture. The code trains two U-Net generators and two PatchGAN discriminators on the CelebA dataset, preprocessing into **Young** and **Old** subsets. The generators learn to translate between these domains, effectively "aging" or "de-aging" a face image.
