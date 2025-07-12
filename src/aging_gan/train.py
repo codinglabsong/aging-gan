@@ -80,9 +80,6 @@ def parse_args() -> argparse.Namespace:
         help="The number of example generated images to save per epoch.",
     )
     p.add_argument(
-        "--gen_steps", type=int, default=2, help="How many generator updates per batch."
-    )
-    p.add_argument(
         "--train_size",
         type=int,
         default=8000,
@@ -212,34 +209,28 @@ def perform_train_step(
     opt_DY.step()
 
     # ------ Update Generators ------
-    for step in range(cfg.gen_steps):
-        opt_G.zero_grad(set_to_none=True)
-        opt_F.zero_grad(set_to_none=True)
-        # Generate fakes and reconstrucitons
-        fake_x = F(y)
-        fake_y = G(x)
-        rec_x = F(fake_y)
-        rec_y = G(fake_x)
-        # Loss 1: adversarial terms
-        fake_test_logits = DX(fake_x)  # fake x logits
-        loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    opt_G.zero_grad(set_to_none=True)
+    opt_F.zero_grad(set_to_none=True)
+    # Loss 1: adversarial terms
+    fake_test_logits = DX(fake_x)  # fake x logits
+    loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
 
-        fake_test_logits = DY(fake_y)  # fake y logits
-        loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
-        # Loss 2: cycle terms
-        loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
-        # Loss 3: identity terms
-        loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
-        # Total loss
-        loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+    fake_test_logits = DY(fake_y)  # fake y logits
+    loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    # Loss 2: cycle terms
+    loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
+    # Loss 3: identity terms
+    loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+    # Total loss
+    loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
-        # Backprop + grad norm + step
-        accelerator.backward(loss_gen_total)
-        accelerator.clip_grad_norm_(
-            list(G.parameters()) + list(F.parameters()), max_norm=1.0
-        )
-        opt_G.step()
-        opt_F.step()
+    # Backprop + grad norm + step
+    accelerator.backward(loss_gen_total)
+    accelerator.clip_grad_norm_(
+        list(G.parameters()) + list(F.parameters()), max_norm=1.0
+    )
+    opt_G.step()
+    opt_F.step()
 
     return {
         "train/loss_DX": loss_DX.item(),
