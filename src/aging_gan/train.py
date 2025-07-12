@@ -83,12 +83,6 @@ def parse_args() -> argparse.Namespace:
         "--gen_steps", type=int, default=2, help="How many generator updates per batch."
     )
     p.add_argument(
-        "--disc_steps",
-        type=int,
-        default=1,
-        help="How many discriminator updates per batch.",
-    )
-    p.add_argument(
         "--train_size",
         type=int,
         default=8000,
@@ -190,33 +184,32 @@ def perform_train_step(
     rec_y = G(fake_x)
 
     # ------ Update Discriminators ------
-    for _ in range(cfg.disc_steps):  # update number per batch
-        # DX: real young vs fake young
-        opt_DX.zero_grad(set_to_none=True)
-        real_logits = DX(x)
-        real_loss = bce(real_logits, torch.ones_like(real_logits))
-        fake_logits = DX(fake_x.detach())
-        fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
-        # DX loss + backprop + grad norm + step
-        loss_DX = 0.5 * (real_loss + fake_loss)
-        accelerator.backward(loss_DX)
-        accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
-        opt_DX.step()
+    # DX: real young vs fake young
+    opt_DX.zero_grad(set_to_none=True)
+    real_logits = DX(x)
+    real_loss = bce(real_logits, torch.ones_like(real_logits))
+    fake_logits = DX(fake_x.detach())
+    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+    # DX loss + backprop + grad norm + step
+    loss_DX = 0.5 * (real_loss + fake_loss)
+    accelerator.backward(loss_DX)
+    accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
+    opt_DX.step()
 
-        # DY: real old vs fake old
-        opt_DY.zero_grad(set_to_none=True)
-        real_logits = DY(y)
-        real_loss = bce(real_logits, torch.ones_like(real_logits))
-        fake_logits = DY(fake_y.detach())
-        fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+    # DY: real old vs fake old
+    opt_DY.zero_grad(set_to_none=True)
+    real_logits = DY(y)
+    real_loss = bce(real_logits, torch.ones_like(real_logits))
+    fake_logits = DY(fake_y.detach())
+    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
 
-        # DY loss + backprop + grad norm + step
-        loss_DY = 0.5 * (
-            real_loss + fake_loss
-        )  # average loss to prevent discriminator learning "too quickly" compread to generators.
-        accelerator.backward(loss_DY)
-        accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
-        opt_DY.step()
+    # DY loss + backprop + grad norm + step
+    loss_DY = 0.5 * (
+        real_loss + fake_loss
+    )  # average loss to prevent discriminator learning "too quickly" compread to generators.
+    accelerator.backward(loss_DY)
+    accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
+    opt_DY.step()
 
     # ------ Update Generators ------
     for _ in range(cfg.gen_steps):
