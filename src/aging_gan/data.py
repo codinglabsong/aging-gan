@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 class UTKFace(Dataset):
     """
-    Assumes the unzipped UTKFace images live in  <root>/data/utkface_aligned_cropped/
+    Assumes the unzipped UTKFace images live in  <root>/data/utkface_aligned_cropped/UTKFace
     File pattern:  {age}_{gender}_{race}_{yyyymmddHHMMSS}.jpg
     """
 
     def __init__(self, root: str, transform: T.Compose | None = None):
         self.root = (
-            Path(root) / "utkface_aligned_cropped"
+            Path(root) / "utkface_aligned_cropped" / "UTKFace"
         )  # or "UTKFace" for the unaligned and varied original version.
         self.files = sorted(f for f in self.root.glob("*.jpg"))
         if not self.files:
