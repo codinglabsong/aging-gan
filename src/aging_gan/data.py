@@ -49,7 +49,7 @@ def make_unpaired_loader(
     limit: int | None = None,  # per-domain cap
     seed: int = 42,
     young_max: int = 30,  # 0-30
-    old_min: int = 55,  # 55+
+    old_min: int = 50,  # 50+
 ):
     full_ds = UTKFace(root, transform)
 
@@ -136,12 +136,31 @@ def prepare_dataset(
     data_dir = Path(__file__).resolve().parents[2] / "data"
     os.makedirs(data_dir, exist_ok=True)
 
-    transform = T.Compose(
+    # randomness
+    train_transform = T.Compose(
         [
             T.CenterCrop(center_crop_size),
+            T.RandomApply(
+                [
+                    T.RandomAffine(
+                        degrees=5, translate=(0.02, 0.02), scale=(0.97, 1.03), shear=2
+                    )
+                ],
+                p=0.3,
+            ),
             T.Resize(resize_size),
             T.RandomHorizontalFlip(0.5),
             T.ColorJitter(0.1, 0.1, 0.1, 0.05),
+            T.ToTensor(),
+            T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+        ]
+    )
+
+    # deterministic
+    eval_transform = T.Compose(
+        [
+            T.CenterCrop(center_crop_size),
+            T.Resize(resize_size),
             T.ToTensor(),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
@@ -152,17 +171,29 @@ def prepare_dataset(
     train_loader = make_unpaired_loader(
         str(data_dir),
         "train",
-        transform,
+        train_transform,
         train_batch_size,
         num_workers,
         train_size,
         seed,
     )
     val_loader = make_unpaired_loader(
-        str(data_dir), "valid", transform, eval_batch_size, num_workers, val_size, seed
+        str(data_dir),
+        "valid",
+        eval_transform,
+        eval_batch_size,
+        num_workers,
+        val_size,
+        seed,
     )
     test_loader = make_unpaired_loader(
-        str(data_dir), "test", transform, eval_batch_size, num_workers, test_size, seed
+        str(data_dir),
+        "test",
+        eval_transform,
+        eval_batch_size,
+        num_workers,
+        test_size,
+        seed,
     )
     logger.info("Done.")
     return train_loader, val_loader, test_loader

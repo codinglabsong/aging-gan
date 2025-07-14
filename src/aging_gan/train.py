@@ -82,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_size",
         type=int,
-        default=8000,
+        default=4000,
         help="The size of train dataset to train on.",
     )
     p.add_argument(
