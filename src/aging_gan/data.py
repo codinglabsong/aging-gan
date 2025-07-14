@@ -4,43 +4,92 @@ import torch
 from torch.utils.data import DataLoader, Subset, Dataset
 import torchvision.transforms as T
 from dataclasses import dataclass
-from torchvision.datasets import CelebA
 from pathlib import Path
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 
+class UTKFace(Dataset):
+    """
+    Assumes the unzipped UTKFace images live in  <root>/data/utkface_aligned_cropped/
+    File pattern:  {age}_{gender}_{race}_{yyyymmddHHMMSS}.jpg
+    """
+
+    def __init__(self, root: str, transform: T.Compose | None = None):
+        self.root = (
+            Path(root) / "utkface_aligned_cropped"
+        )  # or "UTKFace" for the unaligned and varied original version.
+        self.files = sorted(f for f in self.root.glob("*.jpg"))
+        if not self.files:
+            raise FileNotFoundError(
+                f"No UTKFace JPG files found in {self.root}/data/."
+                "Did you unzip the dataset into that folder?"
+            )
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        path = self.files[idx]
+        age = int(path.name.split("_")[0])  # first token of file name is age
+        img = Image.open(path).convert("RGB")
+        if self.transform:
+            img = self.transform(img)
+        return img, age
+
+
 def make_unpaired_loader(
-    root, split, transform, batch_size=4, num_workers=1, limit=None, seed=42
+    root: str,
+    split: str,  # "train" | "valid" | "test"
+    transform: T.Compose,
+    batch_size: int = 4,
+    num_workers: int = 1,
+    limit: int | None = None,  # per-domain cap
+    seed: int = 42,
+    young_max: int = 30,  # 0-30
+    old_min: int = 55,  # 55+
 ):
-    # download split
-    full = CelebA(
-        root=root,
-        split=split,
-        download=True,
-        transform=transform,
-    )
+    full_ds = UTKFace(root, transform)
 
-    # locate the "Young" attribute index
-    young_attr_i = full.attr_names.index("Young")
-    attrs = full.attr
-    # split indices
-    young_idx = (attrs[:, young_attr_i] == 1).nonzero(as_tuple=True)[0]
-    old_idx = (attrs[:, young_attr_i] == 0).nonzero(as_tuple=True)[0]
+    # Split into young, old indices
+    rng = torch.Generator().manual_seed(seed)
+    young_idx = []
+    old_idx = []
 
-    # limit each domain samples
+    for i, f in enumerate(full_ds.files):
+        age = int(f.name.split("_")[0])
+        if age <= young_max:
+            young_idx.append(i)
+        elif age >= old_min:
+            old_idx.append(i)
+
+    if not young_idx or not old_idx:
+        raise ValueError(
+            "Age thresholds left one split empty; adjust young_max/old_min"
+        )
+
+    # Deterministic shuffle and dataset split (80, 10, 10)
+    def split_indices(idxs: list[int]):
+        idxs = torch.tensor(
+            idxs
+        ).long()  # torch Subset() requires integer tensors, not floats. That is why we add .long()
+        idxs = idxs[torch.randperm(len(idxs), generator=rng)]
+        n = len(idxs)
+        train = int(0.8 * n)
+        valid = int(0.9 * n)
+        return {"train": idxs[:train], "valid": idxs[train:valid], "test": idxs[valid:]}
+
+    part_y = split_indices(young_idx)[split]
+    part_o = split_indices(old_idx)[split]
+
+    # Limit per domain
     if limit is not None:
-        gen = torch.Generator().manual_seed(seed)
-        perm_y = torch.randperm(len(young_idx), generator=gen)[:limit]
-        perm_o = torch.randperm(len(old_idx), generator=gen)[:limit]
-        young_idx = young_idx[perm_y]
-        old_idx = old_idx[perm_o]
+        part_y = part_y[:limit]
+        part_o = part_o[:limit]
 
-    # build subsets
-    young_ds = Subset(full, young_idx)
-    old_ds = Subset(full, old_idx)
-
-    # unpaird wrapper
+    # Wrap subsets in unpaird Dataset
     @dataclass
     class Unpaired(Dataset):
         a: Dataset
@@ -54,8 +103,13 @@ def make_unpaired_loader(
             y, _ = self.b[idx % len(self.b)]
             return x, y
 
+    young_ds = Subset(full_ds, part_y)
+    old_ds = Subset(full_ds, part_o)
     paired = Unpaired(young_ds, old_ds)
-    logger.info(f"- Finished spliting: {split} ({len(young_ds)} young + {len(old_ds)} old examples)")
+
+    logger.info(
+        f"- UTK {split}: young={len(young_ds)}  old={len(old_ds)}" f"(limit={limit})"
+    )
     return DataLoader(
         paired,
         batch_size=batch_size,
@@ -74,9 +128,9 @@ def prepare_dataset(
     num_workers: int = 2,
     center_crop_size: int = 178,
     resize_size: int = 256,
-    train_size: int = 10,
-    val_size: int = 8,
-    test_size: int = 8,
+    train_size: int | None = None,  # None = use all
+    val_size: int | None = None,
+    test_size: int | None = None,
     seed: int = 42,
 ):
     data_dir = Path(__file__).resolve().parents[2] / "data"
@@ -89,7 +143,6 @@ def prepare_dataset(
             T.RandomHorizontalFlip(0.5),
             T.ColorJitter(0.1, 0.1, 0.1, 0.05),
             T.ToTensor(),
-            T.RandomErasing(p=0.3, value='random'),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
     )

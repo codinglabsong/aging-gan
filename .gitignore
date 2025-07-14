@@ -17,8 +17,8 @@ build/
 wandb/
 
 # datasets
-# data/
-data/celeba/
+data/
+old-data/
 
 # outputs
 outputs/
