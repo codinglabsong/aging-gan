@@ -33,28 +33,28 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--gen_lr",
         type=float,
-        default=2e-4,
+        default=3e-4,
         help="Initial learning rate for generators.",
     )
     p.add_argument(
         "--disc_lr",
         type=float,
-        default=1.7e-4,
+        default=2e-4,
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=50, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=100, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=32,
+        default=16,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=64,
+        default=32,
         help="Batch size per device during evaluation.",
     )
 
@@ -76,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--num_sample_generations_to_save",
         type=int,
-        default=8,
+        default=10,
         help="The number of example generated images to save per epoch.",
     )
     p.add_argument(
@@ -128,7 +128,7 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 10.0, lambda_id_value: int = 1.0):
+def initialize_loss_functions(lambda_cyc_value: int = 5.0, lambda_id_value: int = 0.05):
     bce = nn.BCEWithLogitsLoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
