@@ -49,7 +49,7 @@ def make_unpaired_loader(
     limit: int | None = None,  # per-domain cap
     seed: int = 42,
     young_max: int = 25,  # 0-25
-    old_min: int = 50,  # 50+
+    old_min: int = 55,  # 55+
 ):
     full_ds = UTKFace(root, transform)
 

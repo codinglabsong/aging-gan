@@ -128,7 +128,7 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 5.0, lambda_id_value: int = 0.05):
+def initialize_loss_functions(lambda_cyc_value: int = 2.0, lambda_id_value: int = 0.02):
     bce = nn.BCEWithLogitsLoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
