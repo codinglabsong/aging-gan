@@ -81,8 +81,8 @@ def make_unpaired_loader(
         valid = int(0.9 * n)
         return {"train": idxs[:train], "valid": idxs[train:valid], "test": idxs[valid:]}
 
-    part_y = split_indices(young_idx)[split]
-    part_o = split_indices(old_idx)[split]
+    part_y = split_indices(young_idx)[split].tolist()
+    part_o = split_indices(old_idx)[split].tolist()
 
     # Limit per domain
     if limit is not None:
