@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--gen_lr",
         type=float,
-        default=3e-4,
+        default=2e-4,
         help="Initial learning rate for generators.",
     )
     p.add_argument(
@@ -45,18 +45,18 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=50, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=25, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=16,
+        default=8,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=32,
+        default=16,
         help="Batch size per device during evaluation.",
     )
 
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_size",
         type=int,
-        default=3000,
+        default=4000,
         help="The size of train dataset to train on.",
     )
     p.add_argument(
@@ -135,7 +135,7 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 2.0, lambda_id_value: int = 0.05):
+def initialize_loss_functions(lambda_cyc_value: int = 10.0, lambda_id_value: int = 5.0):
     bce = nn.BCEWithLogitsLoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
@@ -152,8 +152,8 @@ def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
     def _lr_lambda(epoch):
         if epoch < start_decay:
             return 1.0
-        # linearly decay from 1.0 -> 0.1 from start_decay, never to zero
-        return max(0.1, (n_epochs - epoch) / (n_epochs - start_decay) * 0.9 + 0.1)
+        # linearly decay from 1.0 -> 0.0 from half of run
+        return max(0.0, (n_epochs - epoch) / (n_epochs - start_decay))
 
     sched_G = LambdaLR(opt_G, lr_lambda=_lr_lambda)
     sched_F = LambdaLR(opt_F, lr_lambda=_lr_lambda)
@@ -164,7 +164,6 @@ def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
 
 
 def perform_train_step(
-    cfg,
     G,
     F,  # generator models
     DX,
@@ -380,7 +379,6 @@ def perform_epoch(
     batches_per_epoch = len(train_loader)
     for batch_no, real_data in enumerate(tqdm(train_loader)):
         train_metrics = perform_train_step(
-            cfg,
             G,
             F,  # generator models
             DX,
