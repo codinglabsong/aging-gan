@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+import time
 from accelerate import Accelerator
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
@@ -21,6 +22,7 @@ from aging_gan.utils import (
 )
 from aging_gan.data import prepare_dataset
 from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
+from aging_gan.utils import archive_and_terminate
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +110,11 @@ def parse_args() -> argparse.Namespace:
         action="store_false",
         dest="do_test",
         help="Skip evaluation on the test split after training.",
+    )
+    p.add_argument(
+        "--archive_and_terminate_ec2",
+        action="store_true",
+        help="Upload outputs/ into s3 bucket and terminate current ec2.",
     )
 
     p.add_argument("--wandb_project", type=str, default="aging-gan")
@@ -657,6 +664,12 @@ def main() -> None:
 
     # Finished
     logger.info("Finished run.")
+
+    # upload outputs to s3 bucket and terminate ec2 instance
+    if cfg.archive_and_terminate_ec2:
+        archive_and_terminate(
+            bucket="aging-gan", prefix=f"outputs/run-{int(time.time())}"
+        )
 
 
 if __name__ == "__main__":

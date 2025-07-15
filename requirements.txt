@@ -10,3 +10,4 @@ torchmetrics[image]
 wandb
 numpy
 python-dotenv
+boto3

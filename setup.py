@@ -19,5 +19,6 @@ setup(
         "gdown",
         "tqdm",
         "torchmetrics[image]",
+        "boto3",
     ],
 )

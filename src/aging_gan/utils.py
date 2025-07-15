@@ -1,10 +1,12 @@
 import os
-import glob
+import requests
 import logging
 import random
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import boto3
+import time
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -81,7 +83,7 @@ def save_checkpoint(
         "sched_DX": sched_DX.state_dict(),
         "sched_DY": sched_DY.state_dict(),
     }
-    
+
     if kind == "best":
         filename = os.path.join(ckpt_dir, "best.pth")
         torch.save(state, filename)
@@ -89,12 +91,12 @@ def save_checkpoint(
     elif kind == "latest":
         new_latest = ckpt_dir / f"epoch_{epoch:04d}.pth"
         torch.save(state, new_latest)
-        
+
         # remove previous epoch_*.pth checkpoints
         for f in ckpt_dir.glob("epoch_*.pth"):
             if f != new_latest:
                 f.unlink(missing_ok=True)
-        
+
         logger.info(f"Saved latest checkpoint: {new_latest}")
     else:
         raise ValueError(f"kind must be 'best' or 'latest', got {kind}")
@@ -142,3 +144,52 @@ def generate_and_save_samples(
     plt.tight_layout()
     plt.savefig(filename, format="jpeg")
     plt.close(fig)
+
+
+def archive_and_terminate(
+    bucket: str,
+    prefix: str = "outputs/boto3/",
+) -> None:
+    """
+    1. Recursively uploads everything under ./outputs to `s3://{bucket}/{prefix}/`.
+    2. Calls the EC2 API to terminate *this* instance.
+
+    The instance must run with an IAM role that can:
+        s3:PutObject   on   arn:aws:s3:::{bucket}/*
+        ec2:TerminateInstances on itself (resource‑level ARN)
+    """
+    # Upload
+    s3 = boto3.client("s3")
+    out_root = Path(__file__).resolve().parents[2] / "outputs/"
+    print(f"Uploading {out_root} -> s3://{bucket}/{prefix}/ ...")
+    for fp in out_root.rglob("*"):
+        if fp.is_file():
+            key = f"{prefix}/{fp.relative_to(out_root)}"
+            s3.upload_file(str(fp), bucket, key)
+    print("S3 sync complete")
+
+    # ---------- 2. Gather instance metadata (IMDSv2) ---------------------------------------
+    token = requests.put(
+        "http://169.254.169.254/latest/api/token",
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "300"},
+        timeout=2,
+    ).text
+    imds_hdr = {"X-aws-ec2-metadata-token": token}
+    instance_id = requests.get(
+        "http://169.254.169.254/latest/meta-data/instance-id",
+        headers=imds_hdr,
+        timeout=2,
+    ).text
+    region = requests.get(
+        "http://169.254.169.254/latest/meta-data/placement/region",
+        headers=imds_hdr,
+        timeout=2,
+    ).text
+    print(f"Terminating {instance_id} in {region}")
+
+    # ---------- 3. Terminate self ----------------------------------------------------------
+    ec2 = boto3.client("ec2", region_name=region)
+    ec2.terminate_instances(InstanceIds=[instance_id])
+    print("Termination request sent - instance will shut down shortly")
+    # give AWS a moment so the print flushes before power‑off
+    time.sleep(5)
