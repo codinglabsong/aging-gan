@@ -126,8 +126,8 @@ def prepare_dataset(
     train_batch_size: int = 4,
     eval_batch_size: int = 8,
     num_workers: int = 2,
-    center_crop_size: int = 178,
-    resize_size: int = 256,
+    center_crop_size: int = 256,
+    resize_size: int = 286,
     train_size: int | None = None,  # None = use all
     val_size: int | None = None,
     test_size: int | None = None,
@@ -139,18 +139,19 @@ def prepare_dataset(
     # randomness
     train_transform = T.Compose(
         [
+            T.Resize(resize_size, antialias=True),
             T.CenterCrop(center_crop_size),
             T.RandomApply(
                 [
                     T.RandomAffine(
-                        degrees=5, translate=(0.02, 0.02), scale=(0.97, 1.03), shear=2
+                        degrees=5, translate=(0.02, 0.02), scale=(0.97, 1.03), shear=2,
+                        interpolation=T.InterpolationMode.BILINEAR, fill=0,
                     )
                 ],
                 p=0.3,
             ),
-            T.Resize(resize_size),
             T.RandomHorizontalFlip(0.5),
-            T.ColorJitter(0.1, 0.1, 0.1, 0.05),
+            T.ColorJitter(0.05, 0.05, 0.05, 0.02),
             T.ToTensor(),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
