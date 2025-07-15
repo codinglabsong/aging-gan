@@ -15,13 +15,13 @@ from pathlib import Path
 from aging_gan.utils import (
     set_seed,
     load_environ_vars,
-    # print_trainable_parameters,
+    print_trainable_parameters,
     save_checkpoint,
     generate_and_save_samples,
     get_device,
 )
 from aging_gan.data import prepare_dataset
-from aging_gan.model import initialize_models, ResnetGenerator  # , freeze_encoders, unfreeze_encoders
+from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
 from aging_gan.utils import archive_and_terminate
 
 logger = logging.getLogger(__name__)
@@ -45,18 +45,18 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=80, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=25, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=8,
+        default=16,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=16,
+        default=32,
         help="Batch size per device during evaluation.",
     )
 
@@ -135,7 +135,7 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 10.0, lambda_id_value: int = 5.0):
+def initialize_loss_functions(lambda_cyc_value: int = 2.0, lambda_id_value: int = 0.05):
     mse = nn.MSELoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
@@ -498,19 +498,12 @@ def main() -> None:
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
     # Freeze generator encoderes for training during early epochs
-    # logger.info("Parameters of generator G:")
-    # logger.info(print_trainable_parameters(G))
-    # logger.info("Freezing encoders of generators...")
-    # freeze_encoders(G, F)
-    # logger.info("Parameters of generator G after freezing:")
-    # logger.info(print_trainable_parameters(G))
-    
-    # Compile
-    logger.info("Models compiling...")
-    G = torch.compile(G, backend="aot_eager", fullgraph=False, dynamic=True)
-    F = torch.compile(F, backend="aot_eager", fullgraph=False, dynamic=True)
-    DX = torch.compile(DX, backend="aot_eager", fullgraph=False, dynamic=True)
-    DY = torch.compile(DY, backend="aot_eager", fullgraph=False, dynamic=True)
+    logger.info("Parameters of generator G:")
+    logger.info(print_trainable_parameters(G))
+    logger.info("Freezing encoders of generators...")
+    freeze_encoders(G, F)
+    logger.info("Parameters of generator G after freezing:")
+    logger.info(print_trainable_parameters(G))
     # Initialize optimizers
     (
         opt_G,
@@ -561,12 +554,12 @@ def main() -> None:
     best_fid = float("inf")  # keep track of the best FID score for each epoch
     for epoch in range(1, cfg.num_train_epochs + 1):
         logger.info(f"\nEPOCH {epoch}")
-        # # after 1 full epoch, unfreeze
-        # if epoch == 2:
-        #     logger.info("Unfreezing encoders of generators...")
-        #     unfreeze_encoders(G, F)
-        #     logger.info("Parameters of generator G after unfreezing:")
-        #     logger.info(print_trainable_parameters(G))
+        # after 1 full epoch, unfreeze
+        if epoch == 2:
+            logger.info("Unfreezing encoders of generators...")
+            unfreeze_encoders(G, F)
+            logger.info("Parameters of generator G after unfreezing:")
+            logger.info(print_trainable_parameters(G))
 
         val_metrics = perform_epoch(
             cfg,
