@@ -506,7 +506,6 @@ def main() -> None:
     # logger.info(print_trainable_parameters(G))
     
     # Compile
-    torch._dynamo.config.verbose = True
     logger.info("Models compiling...")
     G = torch.compile(G, backend="aot_eager", fullgraph=False, dynamic=True)
     F = torch.compile(F, backend="aot_eager", fullgraph=False, dynamic=True)
