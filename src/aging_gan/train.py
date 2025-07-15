@@ -502,6 +502,13 @@ def main() -> None:
     # freeze_encoders(G, F)
     # logger.info("Parameters of generator G after freezing:")
     # logger.info(print_trainable_parameters(G))
+    
+    # Compile model
+    logger.info("Compiling models for efficiency...")
+    G = torch.compile(G)
+    F = torch.compile(F)
+    DX = torch.compile(DX)
+    DY = torch.compile(DY)
     # Initialize optimizers
     (
         opt_G,
