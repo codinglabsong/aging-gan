@@ -7,8 +7,6 @@ import torch.nn.functional as F
 # 9‑residual‑block ResNet generator  (CycleGAN, 256×256)
 # ------------------------------------------------------------
 class ResnetBlock(nn.Module):
-    """Residual block with reflect‑pad → conv3×3 → IN → ReLU → Dropout →  
-       reflect‑pad → conv3×3 → IN, then skip‑add."""
     def __init__(self, channels, padding_type="reflect"):
         super().__init__()
         pad = nn.ReflectionPad2d if padding_type == "reflect" else nn.ZeroPad2d
@@ -18,18 +16,17 @@ class ResnetBlock(nn.Module):
             nn.Conv2d(channels, channels, 3, bias=False),
             nn.InstanceNorm2d(channels, affine=True),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.5),                    # ★ new
+            nn.Dropout(0.5),
             pad(1),
             nn.Conv2d(channels, channels, 3, bias=False),
             nn.InstanceNorm2d(channels, affine=True),
         )
 
     def forward(self, x):
-        return x + self.block(x)                # residual add
+        return x + self.block(x) # residual add
 
 
 class ResnetGenerator(nn.Module):
-    """CycleGAN generator for 256×256 images (in/out range [‑1,1])."""
     def __init__(self, in_c=3, out_c=3, n_blocks=9, ngf=64):
         super().__init__()
         assert n_blocks >= 1
@@ -41,7 +38,7 @@ class ResnetGenerator(nn.Module):
             nn.ReLU(inplace=True),
         ]
 
-        # --- downsample twice: 256→128→64 spatial, 64→128→256 channels ---
+        # downsample twice: 256→128→64 spatial, 64→128→256 channels
         mult = 1
         for _ in range(2):
             layers += [
@@ -49,12 +46,12 @@ class ResnetGenerator(nn.Module):
                 nn.InstanceNorm2d(ngf * mult * 2, affine=True),
                 nn.ReLU(inplace=True),
             ]
-            mult *= 2                             # 1→2→4
+            mult *= 2 # 1->2->4
 
-        # --- residual blocks ---
+        # residual blocks
         layers += [ResnetBlock(ngf * mult) for _ in range(n_blocks)]
 
-        # --- upsample back to 256×256 ---
+        # upsample back to 256×256
         for _ in range(2):
             layers += [
                 nn.ConvTranspose2d(
@@ -64,20 +61,20 @@ class ResnetGenerator(nn.Module):
                 nn.InstanceNorm2d(ngf * mult // 2, affine=True),
                 nn.ReLU(inplace=True),
             ]
-            mult //= 2                            # 4→2→1
+            mult //= 2 # 4->2->1
 
         layers += [
             nn.ReflectionPad2d(3),
-            nn.Conv2d(ngf, out_c, 7),              # bias=True is fine here
+            nn.Conv2d(ngf, out_c, 7), # bias=True is fine here
             nn.Tanh(),
         ]
         self.model = nn.Sequential(*layers)
 
-        # --- weight init (Conv / ConvT) ---
+        # weight init (Conv / ConvT)
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
                 nn.init.normal_(m.weight, 0.0, 0.02)
-        # ★ InstanceNorm affine params
+        # InstanceNorm affine params
         for m in self.modules():
             if isinstance(m, nn.InstanceNorm2d):
                 nn.init.constant_(m.weight, 1.0)
