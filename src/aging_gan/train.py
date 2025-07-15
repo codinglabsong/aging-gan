@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--gen_lr",
         type=float,
-        default=2e-4,
+        default=3e-4,
         help="Initial learning rate for generators.",
     )
     p.add_argument(
@@ -50,13 +50,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=8,
+        default=16,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=16,
+        default=32,
         help="Batch size per device during evaluation.",
     )
 
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_size",
         type=int,
-        default=4000,
+        default=3000,
         help="The size of train dataset to train on.",
     )
     p.add_argument(
@@ -136,12 +136,12 @@ def initialize_optimizers(cfg, G, F, DX, DY):
 
 
 def initialize_loss_functions(lambda_cyc_value: int = 10.0, lambda_id_value: int = 5.0):
-    bce = nn.BCEWithLogitsLoss()
+    mse = nn.MSELoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
     lambda_id = lambda_id_value
 
-    return bce, l1, lambda_cyc, lambda_id
+    return mse, l1, lambda_cyc, lambda_id
 
 
 def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
@@ -169,7 +169,7 @@ def perform_train_step(
     DX,
     DY,  # discriminator models
     real_data,
-    bce,
+    mse,
     l1,
     lambda_cyc,
     lambda_id,  # loss functions and loss params
@@ -190,9 +190,9 @@ def perform_train_step(
     # DX: real young vs fake young
     opt_DX.zero_grad(set_to_none=True)
     real_logits = DX(x)
-    real_loss = bce(real_logits, torch.ones_like(real_logits))
+    real_loss = mse(real_logits, torch.ones_like(real_logits))
     fake_logits = DX(fake_x.detach())
-    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+    fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
     # DX loss + backprop + grad norm + step
     loss_DX = 0.5 * (real_loss + fake_loss)
     accelerator.backward(loss_DX)
@@ -202,9 +202,9 @@ def perform_train_step(
     # DY: real old vs fake old
     opt_DY.zero_grad(set_to_none=True)
     real_logits = DY(y)
-    real_loss = bce(real_logits, torch.ones_like(real_logits))
+    real_loss = mse(real_logits, torch.ones_like(real_logits))
     fake_logits = DY(fake_y.detach())
-    fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+    fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
 
     # DY loss + backprop + grad norm + step
     loss_DY = 0.5 * (
@@ -219,16 +219,17 @@ def perform_train_step(
     opt_F.zero_grad(set_to_none=True)
     # Loss 1: adversarial terms
     fake_test_logits = DX(fake_x)  # fake x logits
-    loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    loss_f_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
 
     fake_test_logits = DY(fake_y)  # fake y logits
-    loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+    loss_g_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
     # Loss 2: cycle terms
     loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
     # Loss 3: identity terms
-    loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+    loss_id = lambda_id * 0.5 * (l1(G(y), y) + l1(F(x), x))
     # Total loss
-    loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+    loss_gan = 0.5 * (loss_g_adv + loss_f_adv)
+    loss_gen_total = loss_gan + loss_cyc + loss_id
 
     # Backprop + grad norm + step
     accelerator.backward(loss_gen_total)
@@ -256,7 +257,7 @@ def evaluate_epoch(
     DY,  # discriminator models
     loader,
     split: str,  # either "val" or "test"
-    bce,
+    mse,
     l1,
     lambda_cyc,
     lambda_id,  # loss functions and loss params
@@ -286,19 +287,19 @@ def evaluate_epoch(
             # ------ Evaluate Discriminators ------
             # DX: real young vs fake young
             real_logits = DX(x)
-            real_loss = bce(real_logits, torch.ones_like(real_logits))
+            real_loss = mse(real_logits, torch.ones_like(real_logits))
 
             fake_logits = DX(fake_x)
-            fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+            fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
             # DX loss
             loss_DX = 0.5 * (real_loss + fake_loss)
 
             # DY: real old vs fake old
             real_logits = DY(y)
-            real_loss = bce(real_logits, torch.ones_like(real_logits))
+            real_loss = mse(real_logits, torch.ones_like(real_logits))
 
             fake_logits = DY(fake_y)
-            fake_loss = bce(fake_logits, torch.zeros_like(fake_logits))
+            fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
 
             # DY loss
             loss_DY = 0.5 * (
@@ -308,10 +309,10 @@ def evaluate_epoch(
             # ------ Evaluate Generators ------
             # Loss 1: adversarial terms
             fake_test_logits = DX(fake_x)  # fake x logits
-            loss_f_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+            loss_f_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
 
             fake_test_logits = DY(fake_y)  # fake y logits
-            loss_g_adv = bce(fake_test_logits, torch.ones_like(fake_test_logits))
+            loss_g_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
             # Loss 2: cycle terms
             loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
             # Loss 3: identity terms
@@ -353,7 +354,7 @@ def perform_epoch(
     F,
     DX,
     DY,
-    bce,
+    mse,
     l1,
     lambda_cyc,
     lambda_id,
@@ -384,7 +385,7 @@ def perform_epoch(
             DX,
             DY,  # discriminator models
             real_data,
-            bce,
+            mse,
             l1,
             lambda_cyc,
             lambda_id,  # loss functions and loss params
@@ -426,7 +427,7 @@ def perform_epoch(
         DY,  # discriminator models
         val_loader,
         "val",
-        bce,
+        mse,
         l1,
         lambda_cyc,
         lambda_id,  # loss functions and loss params
@@ -503,12 +504,6 @@ def main() -> None:
     # logger.info("Parameters of generator G after freezing:")
     # logger.info(print_trainable_parameters(G))
     
-    # Compile model
-    logger.info("Compiling models for efficiency...")
-    G = torch.compile(G)
-    F = torch.compile(F)
-    DX = torch.compile(DX)
-    DY = torch.compile(DY)
     # Initialize optimizers
     (
         opt_G,
@@ -545,7 +540,7 @@ def main() -> None:
         test_loader,
     )
     # Loss functions and scalers
-    bce, l1, lambda_cyc, lambda_id = initialize_loss_functions()
+    mse, l1, lambda_cyc, lambda_id = initialize_loss_functions()
     # Initialize schedulers (It it important this comes AFTER wrapping optimizers in accelerator)
     sched_G, sched_F, sched_DX, sched_DY = make_schedulers(
         cfg, opt_G, opt_F, opt_DX, opt_DY
@@ -574,7 +569,7 @@ def main() -> None:
             F,
             DX,
             DY,
-            bce,
+            mse,
             l1,
             lambda_cyc,
             lambda_id,
@@ -656,7 +651,7 @@ def main() -> None:
             DY,  # discriminator models
             test_loader,
             "test",
-            bce,
+            mse,
             l1,
             lambda_cyc,
             lambda_id,  # loss functions and loss params
