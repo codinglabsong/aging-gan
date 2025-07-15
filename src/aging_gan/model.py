@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.utils as nn_utils
 import segmentation_models_pytorch as smp
 
+
 # Discriminator: PatchGAN 70x70
 class PatchDiscriminator(nn.Module):
     def __init__(self, in_channels=3, ndf=48):
@@ -22,9 +23,7 @@ class PatchDiscriminator(nn.Module):
         for i in range(3):
             stride = 2 if i < 2 else 1
             layers += [
-                nn_utils.spectral_norm(
-                    nn.Conv2d(nf, nf * 2, 4, stride, 1)
-                ),
+                nn_utils.spectral_norm(nn.Conv2d(nf, nf * 2, 4, stride, 1)),
                 nn.InstanceNorm2d(nf * 2, affine=True),
                 nn.LeakyReLU(0.2),
             ]
