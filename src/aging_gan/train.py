@@ -316,9 +316,10 @@ def evaluate_epoch(
             # Loss 2: cycle terms
             loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
             # Loss 3: identity terms
-            loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+            loss_id = lambda_id * 0.5 * (l1(G(y), y) + l1(F(x), x))
             # Total loss
-            loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
+            loss_gen = 0.5 * (loss_g_adv + loss_f_adv)
+            loss_gen_total = loss_gen + loss_cyc + loss_id
             # FID metric (normalize to range of [0,1] from [-1,1])
             # FID expects float32 images, which can raise dtype warning for mixed precision batches unless converted.
             fid_metric.update((y * 0.5 + 0.5).float(), real=True)
