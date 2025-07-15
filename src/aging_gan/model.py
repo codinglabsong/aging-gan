@@ -87,7 +87,7 @@ class ResnetGenerator(nn.Module):
 
 # Discriminator: PatchGAN 70x70
 class PatchDiscriminator(nn.Module):
-    def __init__(self, in_channels=3, ndf=64):
+    def __init__(self, in_channels=3, ndf=48):
         super().__init__()
         layers = [
             nn_utils.spectral_norm(

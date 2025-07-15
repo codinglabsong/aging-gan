@@ -504,7 +504,6 @@ def main() -> None:
     # freeze_encoders(G, F)
     # logger.info("Parameters of generator G after freezing:")
     # logger.info(print_trainable_parameters(G))
-    
     # Initialize optimizers
     (
         opt_G,
