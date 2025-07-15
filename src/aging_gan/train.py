@@ -21,7 +21,7 @@ from aging_gan.utils import (
     get_device,
 )
 from aging_gan.data import prepare_dataset
-from aging_gan.model import initialize_models  # , freeze_encoders, unfreeze_encoders
+from aging_gan.model import initialize_models, ResnetGenerator  # , freeze_encoders, unfreeze_encoders
 from aging_gan.utils import archive_and_terminate
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--gen_lr",
         type=float,
-        default=3e-4,
+        default=2e-4,
         help="Initial learning rate for generators.",
     )
     p.add_argument(
@@ -50,13 +50,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=16,
+        default=8,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=32,
+        default=16,
         help="Batch size per device during evaluation.",
     )
 
