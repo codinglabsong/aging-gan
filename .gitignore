@@ -25,3 +25,6 @@ outputs/
 
 # venv
 .venv
+
+# test images
+images/
