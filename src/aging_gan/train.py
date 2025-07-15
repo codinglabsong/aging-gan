@@ -15,13 +15,13 @@ from pathlib import Path
 from aging_gan.utils import (
     set_seed,
     load_environ_vars,
-    print_trainable_parameters,
+    # print_trainable_parameters,
     save_checkpoint,
     generate_and_save_samples,
     get_device,
 )
 from aging_gan.data import prepare_dataset
-from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
+from aging_gan.model import initialize_models  # , freeze_encoders, unfreeze_encoders
 from aging_gan.utils import archive_and_terminate
 
 logger = logging.getLogger(__name__)
@@ -496,12 +496,12 @@ def main() -> None:
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
     # Freeze generator encoderes for training during early epochs
-    logger.info("Parameters of generator G:")
-    logger.info(print_trainable_parameters(G))
-    logger.info("Freezing encoders of generators...")
-    freeze_encoders(G, F)
-    logger.info("Parameters of generator G after freezing:")
-    logger.info(print_trainable_parameters(G))
+    # logger.info("Parameters of generator G:")
+    # logger.info(print_trainable_parameters(G))
+    # logger.info("Freezing encoders of generators...")
+    # freeze_encoders(G, F)
+    # logger.info("Parameters of generator G after freezing:")
+    # logger.info(print_trainable_parameters(G))
     # Initialize optimizers
     (
         opt_G,
@@ -552,12 +552,12 @@ def main() -> None:
     best_fid = float("inf")  # keep track of the best FID score for each epoch
     for epoch in range(1, cfg.num_train_epochs + 1):
         logger.info(f"\nEPOCH {epoch}")
-        # after 1 full epoch, unfreeze
-        if epoch == 2:
-            logger.info("Unfreezing encoders of generators...")
-            unfreeze_encoders(G, F)
-            logger.info("Parameters of generator G after unfreezing:")
-            logger.info(print_trainable_parameters(G))
+        # # after 1 full epoch, unfreeze
+        # if epoch == 2:
+        #     logger.info("Unfreezing encoders of generators...")
+        #     unfreeze_encoders(G, F)
+        #     logger.info("Parameters of generator G after unfreezing:")
+        #     logger.info(print_trainable_parameters(G))
 
         val_metrics = perform_epoch(
             cfg,
