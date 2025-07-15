@@ -15,7 +15,7 @@ class ResnetBlock(nn.Module):
             pad(1),
             nn.Conv2d(channels, channels, 3, bias=False),
             nn.InstanceNorm2d(channels, affine=True),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Dropout(0.5),
             pad(1),
             nn.Conv2d(channels, channels, 3, bias=False),
@@ -35,7 +35,7 @@ class ResnetGenerator(nn.Module):
             nn.ReflectionPad2d(3),
             nn.Conv2d(in_c, ngf, 7, bias=False),
             nn.InstanceNorm2d(ngf, affine=True),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
         ]
 
         # downsample twice: 256→128→64 spatial, 64→128→256 channels
@@ -44,7 +44,7 @@ class ResnetGenerator(nn.Module):
             layers += [
                 nn.Conv2d(ngf * mult, ngf * mult * 2, 3, 2, 1, bias=False),
                 nn.InstanceNorm2d(ngf * mult * 2, affine=True),
-                nn.ReLU(inplace=True),
+                nn.ReLU(),
             ]
             mult *= 2 # 1->2->4
 
@@ -59,7 +59,7 @@ class ResnetGenerator(nn.Module):
                     3, 2, 1, output_padding=1, bias=False
                 ),
                 nn.InstanceNorm2d(ngf * mult // 2, affine=True),
-                nn.ReLU(inplace=True),
+                nn.ReLU(),
             ]
             mult //= 2 # 4->2->1
 

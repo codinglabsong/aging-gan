@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--gen_lr",
         type=float,
-        default=2e-4,
+        default=3e-4,
         help="Initial learning rate for generators.",
     )
     p.add_argument(
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=25, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=80, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
@@ -127,10 +127,10 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     # track all generator params (even frozen encoder params during initial training).
     # This would allow us to transition easily to the full fine-tuning later on by simply toggling requires_grad=True
     # since the optimizers already track all the parameters from the start.
-    opt_G = optim.Adam(G.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999))
-    opt_F = optim.Adam(F.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999))
-    opt_DX = optim.Adam(DX.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999))
-    opt_DY = optim.Adam(DY.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999))
+    opt_G = optim.Adam(G.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999), fused=True)
+    opt_F = optim.Adam(F.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999), fused=True)
+    opt_DX = optim.Adam(DX.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999), fused=True)
+    opt_DY = optim.Adam(DY.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999), fused=True)
 
     return opt_G, opt_F, opt_DX, opt_DY
 
@@ -504,6 +504,14 @@ def main() -> None:
     # freeze_encoders(G, F)
     # logger.info("Parameters of generator G after freezing:")
     # logger.info(print_trainable_parameters(G))
+    
+    # Compile
+    torch._dynamo.config.verbose = True
+    logger.info("Models compiling...")
+    G = torch.compile(G, backend="aot_eager", fullgraph=False, dynamic=True)
+    F = torch.compile(F, backend="aot_eager", fullgraph=False, dynamic=True)
+    DX = torch.compile(DX, backend="aot_eager", fullgraph=False, dynamic=True)
+    DY = torch.compile(DY, backend="aot_eager", fullgraph=False, dynamic=True)
     # Initialize optimizers
     (
         opt_G,
