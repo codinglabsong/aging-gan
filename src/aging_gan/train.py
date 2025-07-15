@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial learning rate for discriminators.",
     )
     p.add_argument(
-        "--num_train_epochs", type=int, default=80, help="Number of training epochs."
+        "--num_train_epochs", type=int, default=50, help="Number of training epochs."
     )
     p.add_argument(
         "--train_batch_size",
@@ -128,7 +128,7 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 2.0, lambda_id_value: int = 0.02):
+def initialize_loss_functions(lambda_cyc_value: int = 2.0, lambda_id_value: int = 0.05):
     bce = nn.BCEWithLogitsLoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
