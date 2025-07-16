@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
-import time
+import uuid
+import json
 from accelerate import Accelerator
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
@@ -21,7 +22,7 @@ from aging_gan.utils import (
 )
 from aging_gan.data import prepare_dataset
 from aging_gan.model import initialize_models
-from aging_gan.utils import archive_and_terminate
+from aging_gan.utils import terminate_ec2, archive_ec2
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--num_workers",
         type=int,
-        default=2,
+        default=3,
         help="Number of workers for dataloaders.",
     )
     p.add_argument(
@@ -119,6 +120,12 @@ def parse_args() -> argparse.Namespace:
         "--archive_and_terminate_ec2",
         action="store_true",
         help="Upload outputs/ into s3 bucket and terminate current ec2.",
+    )
+    p.add_argument(
+        "--s3_bucket_name",
+        type=str,
+        default="aging-gan",
+        help="Name of your s3 bucket to sync outputs. Effective only when --archive_and_terminate_ec2.",
     )
 
     p.add_argument("--wandb_project", type=str, default="aging-gan")
@@ -160,7 +167,9 @@ def initialize_optimizers(cfg, G, F, DX, DY):
 
 
 def initialize_loss_functions(
-    lambda_adv_value: float = 2.0, lambda_cyc_value: float = 10.0, lambda_id_value: float = 7.0
+    lambda_adv_value: float = 2.0,
+    lambda_cyc_value: float = 10.0,
+    lambda_id_value: float = 7.0,
 ):
     mse = nn.MSELoss()
     l1 = nn.L1Loss()
@@ -500,8 +509,10 @@ def main() -> None:
 
     # ---------- Run Initialization ----------
     # wandb
+    run_name = uuid.uuid4().hex[:8]
     wandb.init(
         project=cfg.wandb_project,
+        name=run_name,
         config={
             k: v for k, v in vars(cfg).items() if not k.startswith("_")
         },  # drop python's or "private" framework-internal attributes
@@ -644,6 +655,9 @@ def main() -> None:
                 sched_DY,  # schedulers
                 "best",
             )
+            # upload outputs to s3 bucket
+            if cfg.archive_and_terminate_ec2:
+                archive_ec2(bucket=cfg.s3_bucket_name, prefix=f"outputs/run-{run_name}")
         # save the latest checkpoint
         if epoch % 5 == 0:
             save_checkpoint(
@@ -662,6 +676,9 @@ def main() -> None:
                 sched_DY,  # schedulers
                 "current",
             )
+            # upload outputs to s3 bucket
+            if cfg.archive_and_terminate_ec2:
+                archive_ec2(bucket=cfg.s3_bucket_name, prefix=f"outputs/run-{run_name}")
 
     # ---------- Test ----------
     if cfg.do_test:
@@ -702,17 +719,25 @@ def main() -> None:
         )
         logger.info(f"Test metrics (best.pth):\n{test_metrics}")
         wandb.log(test_metrics)
+        # write metrics out
+        out_dir = Path(__file__).resolve().parents[2] / "outputs" / "metrics"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        metrics_path = out_dir / "test_metrics.json"
+        with metrics_path.open("w") as f:
+            json.dump(test_metrics, f, indent=4)
+        print(f"Saved test metrics to {metrics_path}")
+        # upload outputs to s3 bucket
+        if cfg.archive_and_terminate_ec2:
+            archive_ec2(bucket=cfg.s3_bucket_name, prefix=f"outputs/run-{run_name}")
     else:
         logger.info("Skipping test evaluation...")
 
     # Finished
     logger.info("Finished run.")
 
-    # upload outputs to s3 bucket and terminate ec2 instance
+    # terminate ec2 instance
     if cfg.archive_and_terminate_ec2:
-        archive_and_terminate(
-            bucket="aging-gan", prefix=f"outputs/run-{int(time.time())}"
-        )
+        terminate_ec2()
 
 
 if __name__ == "__main__":

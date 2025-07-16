@@ -5,6 +5,7 @@ import random
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import subprocess
 import boto3
 import time
 from dotenv import load_dotenv
@@ -103,7 +104,7 @@ def generate_and_save_samples(
     device: torch.device,
     num_samples: int = 8,
 ):
-    # grab batches until num_samples   
+    # grab batches until num_samples
     collected = []
     for imgs, _ in val_loader:
         collected.append(imgs)
@@ -112,9 +113,9 @@ def generate_and_save_samples(
 
     if not collected:
         raise ValueError("Validation loader is empty.")
-    
+
     inputs = torch.cat(collected, dim=0)[:num_samples].to(device)
-    
+
     with torch.no_grad():
         outputs = generator(inputs)
 
@@ -149,29 +150,35 @@ def generate_and_save_samples(
     plt.close(fig)
 
 
-def archive_and_terminate(
+def archive_ec2(
     bucket: str,
-    prefix: str = "outputs/boto3/",
+    prefix: str = "outputs",
 ) -> None:
+    """Syncs everything under ./outputs to `s3://{bucket}/{prefix}/`."""
+    # Upload
+    out_root = Path(__file__).resolve().parents[2] / "outputs"
+    print(f"Uploading {out_root} -> s3://{bucket}/{prefix}/ ...")
+    cmd = [
+        "aws",
+        "s3",
+        "sync",
+        str(out_root),
+        f"s3://{bucket}/{prefix}",
+        "--only-show-errors",  # quieter logging
+    ]
+    subprocess.run(cmd, check=True)
+    print("S3 sync complete")
+
+
+def terminate_ec2() -> None:
     """
-    1. Recursively uploads everything under ./outputs to `s3://{bucket}/{prefix}/`.
-    2. Calls the EC2 API to terminate *this* instance.
+    Calls the EC2 API to terminate this instance.
 
     The instance must run with an IAM role that can:
         s3:PutObject   on   arn:aws:s3:::{bucket}/*
         ec2:TerminateInstances on itself (resource‑level ARN)
     """
-    # Upload
-    s3 = boto3.client("s3")
-    out_root = Path(__file__).resolve().parents[2] / "outputs/"
-    print(f"Uploading {out_root} -> s3://{bucket}/{prefix}/ ...")
-    for fp in out_root.rglob("*"):
-        if fp.is_file():
-            key = f"{prefix}/{fp.relative_to(out_root)}"
-            s3.upload_file(str(fp), bucket, key)
-    print("S3 sync complete")
-
-    # ---------- 2. Gather instance metadata (IMDSv2) ---------------------------------------
+    # Gather instance metadata (IMDSv2)
     token = requests.put(
         "http://169.254.169.254/latest/api/token",
         headers={"X-aws-ec2-metadata-token-ttl-seconds": "300"},
@@ -190,7 +197,7 @@ def archive_and_terminate(
     ).text
     print(f"Terminating {instance_id} in {region}")
 
-    # ---------- 3. Terminate self ----------------------------------------------------------
+    # Terminate self
     ec2 = boto3.client("ec2", region_name=region)
     ec2.terminate_instances(InstanceIds=[instance_id])
     print("Termination request sent - instance will shut down shortly")
