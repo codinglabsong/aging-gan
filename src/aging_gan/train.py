@@ -78,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--weight_decay",
-        type=int,
+        type=float,
         default=1e-4,
     )
 
@@ -135,28 +135,24 @@ def initialize_optimizers(cfg, G, F, DX, DY):
         G.parameters(),
         lr=cfg.gen_lr,
         betas=(0.5, 0.999),
-        fused=True,
         weight_decay=cfg.weight_decay,
     )
     opt_F = optim.Adam(
         F.parameters(),
         lr=cfg.gen_lr,
         betas=(0.5, 0.999),
-        fused=True,
         weight_decay=cfg.weight_decay,
     )
     opt_DX = optim.Adam(
         DX.parameters(),
         lr=cfg.disc_lr,
         betas=(0.5, 0.999),
-        fused=True,
         weight_decay=cfg.weight_decay,
     )
     opt_DY = optim.Adam(
         DY.parameters(),
         lr=cfg.disc_lr,
         betas=(0.5, 0.999),
-        fused=True,
         weight_decay=cfg.weight_decay,
     )
 
@@ -212,56 +208,29 @@ def perform_train_step(
     accelerator,
 ):
     x, y = real_data
-    # Generate fakes and reconstrucitons
-    fake_x = F(y)
-    fake_y = G(x)
-    rec_x = F(fake_y)
-    rec_y = G(fake_x)
-
-    # ------ Update Discriminators ------
-    # DX: real young vs fake young
-    opt_DX.zero_grad(set_to_none=True)
-    real_logits = DX(x)
-    real_loss = mse(real_logits, torch.ones_like(real_logits))
-    fake_logits = DX(fake_x.detach())
-    fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
-    # DX loss + backprop + grad norm + step
-    loss_DX = 0.5 * (real_loss + fake_loss)
-    accelerator.backward(loss_DX)
-    accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
-    opt_DX.step()
-
-    # DY: real old vs fake old
-    opt_DY.zero_grad(set_to_none=True)
-    real_logits = DY(y)
-    real_loss = mse(real_logits, torch.ones_like(real_logits))
-    fake_logits = DY(fake_y.detach())
-    fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
-
-    # DY loss + backprop + grad norm + step
-    loss_DY = 0.5 * (
-        real_loss + fake_loss
-    )  # average loss to prevent discriminator learning "too quickly" compread to generators.
-    accelerator.backward(loss_DY)
-    accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
-    opt_DY.step()
-
     # ------ Update Generators ------
     opt_G.zero_grad(set_to_none=True)
     opt_F.zero_grad(set_to_none=True)
-    # Loss 1: adversarial terms
-    fake_test_logits = DX(fake_x)  # fake x logits
-    loss_f_adv = lambda_adv * mse(fake_test_logits, torch.ones_like(fake_test_logits))
-
-    fake_test_logits = DY(fake_y)  # fake y logits
-    loss_g_adv = lambda_adv * mse(fake_test_logits, torch.ones_like(fake_test_logits))
-    # Loss 2: cycle terms
-    loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
-    # Loss 3: identity terms
-    loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
-    # Total loss
-    loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
-
+    with accelerator.autocast():
+        fake_x = F(y)
+        fake_y = G(x)
+        rec_x = F(fake_y)
+        rec_y = G(fake_x)
+        # Loss 1: adversarial terms
+        fake_test_logits = DX(fake_x)  # fake x logits
+        loss_f_adv = lambda_adv * mse(
+            fake_test_logits, torch.ones_like(fake_test_logits)
+        )
+        fake_test_logits = DY(fake_y)  # fake y logits
+        loss_g_adv = lambda_adv * mse(
+            fake_test_logits, torch.ones_like(fake_test_logits)
+        )
+        # Loss 2: cycle terms
+        loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
+        # Loss 3: identity terms
+        loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+        # Total loss
+        loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
     # Backprop + grad norm + step
     accelerator.backward(loss_gen_total)
     accelerator.clip_grad_norm_(
@@ -269,6 +238,37 @@ def perform_train_step(
     )
     opt_G.step()
     opt_F.step()
+
+    # ------ Update Discriminators ------
+    # DX: real young vs fake young
+    opt_DX.zero_grad(set_to_none=True)
+    with accelerator.autocast():
+        real_logits = DX(x)
+        real_loss = mse(real_logits, torch.ones_like(real_logits))
+        fake_logits = DX(fake_x.detach())
+        fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
+        # DX loss
+        loss_DX = 0.5 * (real_loss + fake_loss)
+    # backprop + grad norm + step
+    accelerator.backward(loss_DX)
+    accelerator.clip_grad_norm_(DX.parameters(), max_norm=1.0)
+    opt_DX.step()
+
+    # DY: real old vs fake old
+    opt_DY.zero_grad(set_to_none=True)
+    with accelerator.autocast():
+        real_logits = DY(y)
+        real_loss = mse(real_logits, torch.ones_like(real_logits))
+        fake_logits = DY(fake_y.detach())
+        fake_loss = mse(fake_logits, torch.zeros_like(fake_logits))
+        # DY loss
+        loss_DY = 0.5 * (
+            real_loss + fake_loss
+        )  # average loss to prevent discriminator learning "too quickly" compread to generators.
+    # backprop + grad norm + step
+    accelerator.backward(loss_DY)
+    accelerator.clip_grad_norm_(DY.parameters(), max_norm=1.0)
+    opt_DY.step()
 
     return {
         "train/loss_DX": loss_DX.item(),
@@ -294,6 +294,7 @@ def evaluate_epoch(
     lambda_cyc,
     lambda_id,  # loss functions and loss params
     fid_metric,
+    accelerator,
 ):
     metrics = {
         f"{split}/loss_DX": 0.0,
@@ -307,7 +308,7 @@ def evaluate_epoch(
     }
     n_batches = 0
 
-    with torch.no_grad():
+    with torch.no_grad(), accelerator.autocast():
         fid_metric.reset()
         for x, y in tqdm(loader):
             # Forward: Generate fakes and reconstrucitons
@@ -315,6 +316,23 @@ def evaluate_epoch(
             fake_y = G(x)
             rec_x = F(fake_y)
             rec_y = G(fake_x)
+            # ------ Evaluate Generators ------
+            # Loss 1: adversarial terms
+            fake_test_logits = DX(fake_x)  # fake x logits
+            loss_f_adv = lambda_adv * mse(
+                fake_test_logits, torch.ones_like(fake_test_logits)
+            )
+
+            fake_test_logits = DY(fake_y)  # fake y logits
+            loss_g_adv = lambda_adv * mse(
+                fake_test_logits, torch.ones_like(fake_test_logits)
+            )
+            # Loss 2: cycle terms
+            loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
+            # Loss 3: identity terms
+            loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
+            # Total loss
+            loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
             # ------ Evaluate Discriminators ------
             # DX: real young vs fake young
@@ -338,23 +356,6 @@ def evaluate_epoch(
                 real_loss + fake_loss
             )  # average loss to prevent discriminator learning "too quickly" compread to generators.
 
-            # ------ Evaluate Generators ------
-            # Loss 1: adversarial terms
-            fake_test_logits = DX(fake_x)  # fake x logits
-            loss_f_adv = lambda_adv * mse(
-                fake_test_logits, torch.ones_like(fake_test_logits)
-            )
-
-            fake_test_logits = DY(fake_y)  # fake y logits
-            loss_g_adv = lambda_adv * mse(
-                fake_test_logits, torch.ones_like(fake_test_logits)
-            )
-            # Loss 2: cycle terms
-            loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
-            # Loss 3: identity terms
-            loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
-            # Total loss
-            loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
             # FID metric (normalize to range of [0,1] from [-1,1])
             # FID expects float32 images, which can raise dtype warning for mixed precision batches unless converted.
             fid_metric.update((y * 0.5 + 0.5).float(), real=True)
@@ -471,6 +472,7 @@ def perform_epoch(
         lambda_cyc,
         lambda_id,  # loss functions and loss params
         fid_metric,  # evaluation metric
+        accelerator,
     )
     logger.info(
         f"val/loss_DX: {val_metrics['val/loss_DX']:.4f} | val/loss_DY: {val_metrics['val/loss_DY']:.4f} | val/fid_val: {val_metrics['val/fid_val']:.4f} | val/loss_gen_total: {val_metrics['val/loss_gen_total']:.4f} | val/loss_g_adv: {val_metrics['val/loss_g_adv']:.4f} | val/loss_f_adv: {val_metrics['val/loss_f_adv']:.4f} | val/loss_cyc: {val_metrics['val/loss_cyc']:.4f} | val/loss_id: {val_metrics['val/loss_id']:.4f}"
