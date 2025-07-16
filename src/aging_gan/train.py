@@ -694,9 +694,11 @@ def main() -> None:
             "test",
             mse,
             l1,
+            lambda_adv,
             lambda_cyc,
             lambda_id,  # loss functions and loss params
             fid_metric,  # evaluation metric
+            accelerator,
         )
         logger.info(f"Test metrics (best.pth):\n{test_metrics}")
         wandb.log(test_metrics)
