@@ -59,6 +59,23 @@ def parse_args() -> argparse.Namespace:
         default=32,
         help="Batch size per device during evaluation.",
     )
+    p.add_argument(
+        "--lambda_cyc_value",
+        type=int,
+        default=7,
+        help="Weight for cyclical loss",
+    )
+    p.add_argument(
+        "--lambda_id_value",
+        type=int,
+        default=7,
+        help="Weight for identity loss",
+    )
+    p.add_argument(
+        "--weight_decay",
+        type=int,
+        default=1e-4,
+    )
 
     # other params
     p.add_argument(
@@ -127,15 +144,39 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     # track all generator params (even frozen encoder params during initial training).
     # This would allow us to transition easily to the full fine-tuning later on by simply toggling requires_grad=True
     # since the optimizers already track all the parameters from the start.
-    opt_G = optim.Adam(G.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999), fused=True)
-    opt_F = optim.Adam(F.parameters(), lr=cfg.gen_lr, betas=(0.5, 0.999), fused=True)
-    opt_DX = optim.Adam(DX.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999), fused=True)
-    opt_DY = optim.Adam(DY.parameters(), lr=cfg.disc_lr, betas=(0.5, 0.999), fused=True)
+    opt_G = optim.Adam(
+        G.parameters(),
+        lr=cfg.gen_lr,
+        betas=(0.5, 0.999),
+        fused=True,
+        weight_decay=cfg.weight_decay,
+    )
+    opt_F = optim.Adam(
+        F.parameters(),
+        lr=cfg.gen_lr,
+        betas=(0.5, 0.999),
+        fused=True,
+        weight_decay=cfg.weight_decay,
+    )
+    opt_DX = optim.Adam(
+        DX.parameters(),
+        lr=cfg.disc_lr,
+        betas=(0.5, 0.999),
+        fused=True,
+        weight_decay=cfg.weight_decay,
+    )
+    opt_DY = optim.Adam(
+        DY.parameters(),
+        lr=cfg.disc_lr,
+        betas=(0.5, 0.999),
+        fused=True,
+        weight_decay=cfg.weight_decay,
+    )
 
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 2.0, lambda_id_value: int = 0.05):
+def initialize_loss_functions(lambda_cyc_value: int = 10, lambda_id_value: int = 5):
     mse = nn.MSELoss()
     l1 = nn.L1Loss()
     lambda_cyc = lambda_cyc_value
@@ -226,10 +267,9 @@ def perform_train_step(
     # Loss 2: cycle terms
     loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
     # Loss 3: identity terms
-    loss_id = lambda_id * 0.5 * (l1(G(y), y) + l1(F(x), x))
+    loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
     # Total loss
-    loss_gan = 0.5 * (loss_g_adv + loss_f_adv)
-    loss_gen_total = loss_gan + loss_cyc + loss_id
+    loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
 
     # Backprop + grad norm + step
     accelerator.backward(loss_gen_total)
@@ -316,10 +356,9 @@ def evaluate_epoch(
             # Loss 2: cycle terms
             loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
             # Loss 3: identity terms
-            loss_id = lambda_id * 0.5 * (l1(G(y), y) + l1(F(x), x))
+            loss_id = lambda_id * (l1(G(y), y) + l1(F(x), x))
             # Total loss
-            loss_gen = 0.5 * (loss_g_adv + loss_f_adv)
-            loss_gen_total = loss_gen + loss_cyc + loss_id
+            loss_gen_total = loss_g_adv + loss_f_adv + loss_cyc + loss_id
             # FID metric (normalize to range of [0,1] from [-1,1])
             # FID expects float32 images, which can raise dtype warning for mixed precision batches unless converted.
             fid_metric.update((y * 0.5 + 0.5).float(), real=True)
@@ -540,7 +579,9 @@ def main() -> None:
         test_loader,
     )
     # Loss functions and scalers
-    mse, l1, lambda_cyc, lambda_id = initialize_loss_functions()
+    mse, l1, lambda_cyc, lambda_id = initialize_loss_functions(
+        cfg.lambda_cyc_value, cfg.lambda_id_value
+    )
     # Initialize schedulers (It it important this comes AFTER wrapping optimizers in accelerator)
     sched_G, sched_F, sched_DX, sched_DY = make_schedulers(
         cfg, opt_G, opt_F, opt_DX, opt_DY
