@@ -103,9 +103,18 @@ def generate_and_save_samples(
     device: torch.device,
     num_samples: int = 8,
 ):
-    # grab one batch
-    inputs, _ = next(iter(val_loader))
-    inputs = inputs.to(device)[:num_samples]
+    # grab batches until num_samples   
+    collected = []
+    for imgs, _ in val_loader:
+        collected.append(imgs)
+        if sum(b.size(0) for b in collected) >= num_samples:
+            break
+
+    if not collected:
+        raise ValueError("Validation loader is empty.")
+    
+    inputs = torch.cat(collected, dim=0)[:num_samples].to(device)
+    
     with torch.no_grad():
         outputs = generator(inputs)
 

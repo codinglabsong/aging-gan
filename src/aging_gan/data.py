@@ -132,7 +132,7 @@ def prepare_dataset(
     # randomness
     train_transform = T.Compose(
         [
-            T.ToPILImage(),
+            # T.ToPILImage(),
             T.RandomHorizontalFlip(),
             T.Resize((img_size + 50, img_size + 50), antialias=True),
             T.RandomCrop(img_size),
