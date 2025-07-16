@@ -157,7 +157,7 @@ def archive_ec2(
     """Syncs everything under ./outputs to `s3://{bucket}/{prefix}/`."""
     # Upload
     out_root = Path(__file__).resolve().parents[2] / "outputs"
-    print(f"Uploading {out_root} -> s3://{bucket}/{prefix}/ ...")
+    logger.info(f"Uploading {out_root} -> s3://{bucket}/{prefix}/ ...")
     cmd = [
         "aws",
         "s3",
@@ -167,7 +167,7 @@ def archive_ec2(
         "--only-show-errors",  # quieter logging
     ]
     subprocess.run(cmd, check=True)
-    print("S3 sync complete")
+    logger.info("S3 sync complete")
 
 
 def terminate_ec2() -> None:
@@ -195,11 +195,11 @@ def terminate_ec2() -> None:
         headers=imds_hdr,
         timeout=2,
     ).text
-    print(f"Terminating {instance_id} in {region}")
+    logger.info(f"Terminating {instance_id} in {region}")
 
     # Terminate self
     ec2 = boto3.client("ec2", region_name=region)
     ec2.terminate_instances(InstanceIds=[instance_id])
-    print("Termination request sent - instance will shut down shortly")
+    logger.info("Termination request sent - instance will shut down shortly")
     # give AWS a moment so the print flushes before power‑off
     time.sleep(5)

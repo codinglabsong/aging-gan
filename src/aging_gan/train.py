@@ -725,7 +725,7 @@ def main() -> None:
         metrics_path = out_dir / "test_metrics.json"
         with metrics_path.open("w") as f:
             json.dump(test_metrics, f, indent=4)
-        print(f"Saved test metrics to {metrics_path}")
+        logger.info(f"Saved test metrics to {metrics_path}")
         # upload outputs to s3 bucket
         if cfg.archive_and_terminate_ec2:
             archive_ec2(bucket=cfg.s3_bucket_name, prefix=f"outputs/run-{run_name}")
