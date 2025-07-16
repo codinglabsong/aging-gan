@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--steps_for_logging_metrics",
         type=int,
-        default=1,
+        default=50,
         help="Print training metrics after certain batch steps.",
     )
     p.add_argument(
