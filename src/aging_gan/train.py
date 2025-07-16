@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--gen_lr",
         type=float,
-        default=1e-4,
+        default=2e-4,
         help="Initial learning rate for generators.",
     )
     p.add_argument(
@@ -49,31 +49,31 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--train_batch_size",
         type=int,
-        default=4,
+        default=16,
         help="Batch size per device during training.",
     )
     p.add_argument(
         "--eval_batch_size",
         type=int,
-        default=8,
+        default=32,
         help="Batch size per device during evaluation.",
     )
     p.add_argument(
         "--lambda_adv_value",
-        type=int,
-        default=2,
+        type=float,
+        default=2.0,
         help="Weight for adversarial loss",
     )
     p.add_argument(
         "--lambda_cyc_value",
-        type=int,
-        default=10,
+        type=float,
+        default=4.0,
         help="Weight for cyclical loss",
     )
     p.add_argument(
         "--lambda_id_value",
-        type=int,
-        default=7,
+        type=float,
+        default=0.5,
         help="Weight for identity loss",
     )
     p.add_argument(
@@ -160,7 +160,7 @@ def initialize_optimizers(cfg, G, F, DX, DY):
 
 
 def initialize_loss_functions(
-    lambda_adv_value: int = 2, lambda_cyc_value: int = 10, lambda_id_value: int = 7
+    lambda_adv_value: float = 2.0, lambda_cyc_value: float = 10.0, lambda_id_value: float = 7.0
 ):
     mse = nn.MSELoss()
     l1 = nn.L1Loss()
