@@ -124,7 +124,6 @@ def prepare_dataset(
     eval_batch_size: int = 8,
     num_workers: int = 2,
     img_size: int = 256,
-    resize_size: int = 286,
     seed: int = 42,
 ):
     data_dir = Path(__file__).resolve().parents[2] / "data"
@@ -146,7 +145,7 @@ def prepare_dataset(
     # deterministic
     eval_transform = T.Compose(
         [
-            T.Resize(resize_size, antialias=True),
+            T.Resize((img_size + 50, img_size + 50), antialias=True),
             T.CenterCrop(img_size),
             T.ToTensor(),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),

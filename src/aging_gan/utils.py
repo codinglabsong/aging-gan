@@ -64,7 +64,7 @@ def save_checkpoint(
     sched_DY,  # schedulers
     kind: str = "best",
 ):
-    """Overwrite the single best‐ever checkpoint."""
+    """Overwrite the single best-ever checkpoint."""
     ckpt_dir = Path(__file__).resolve().parents[2] / "outputs/checkpoints"
     os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -88,15 +88,9 @@ def save_checkpoint(
         filename = os.path.join(ckpt_dir, "best.pth")
         torch.save(state, filename)
         logger.info(f"Saved best checkpoint: {filename}")
-    elif kind == "latest":
+    elif kind == "current":
         new_latest = ckpt_dir / f"epoch_{epoch:04d}.pth"
         torch.save(state, new_latest)
-
-        # remove previous epoch_*.pth checkpoints
-        for f in ckpt_dir.glob("epoch_*.pth"):
-            if f != new_latest:
-                f.unlink(missing_ok=True)
-
         logger.info(f"Saved latest checkpoint: {new_latest}")
     else:
         raise ValueError(f"kind must be 'best' or 'latest', got {kind}")
