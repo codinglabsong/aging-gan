@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 class UTKFace(Dataset):
     """
-    Assumes the unzipped UTKFace images live in  <root>/data/utkface_aligned_cropped/UTKFace
+    Assumes the unzipped UTKFace images live in  <root>/data/UTKFace
     File pattern:  {age}_{gender}_{race}_{yyyymmddHHMMSS}.jpg
     """
 
     def __init__(self, root: str, transform: T.Compose | None = None):
         self.root = (
-            Path(root) / "utkface_aligned_cropped" / "UTKFace"
+            Path(root) / "UTKFace"  # "utkface_aligned_cropped" /
         )  # or "UTKFace" for the unaligned and varied original version.
         self.files = sorted(f for f in self.root.glob("*.jpg"))
         if not self.files:
@@ -46,10 +46,9 @@ def make_unpaired_loader(
     transform: T.Compose,
     batch_size: int = 4,
     num_workers: int = 1,
-    limit: int | None = None,  # per-domain cap
     seed: int = 42,
-    young_max: int = 25,  # 0-25
-    old_min: int = 55,  # 55+
+    young_max: int = 28,  # 18-28
+    old_min: int = 40,  # 40+
 ):
     full_ds = UTKFace(root, transform)
 
@@ -60,7 +59,7 @@ def make_unpaired_loader(
 
     for i, f in enumerate(full_ds.files):
         age = int(f.name.split("_")[0])
-        if age <= young_max:
+        if age <= young_max and age >= 18:
             young_idx.append(i)
         elif age >= old_min:
             old_idx.append(i)
@@ -84,10 +83,10 @@ def make_unpaired_loader(
     part_y = split_indices(young_idx)[split].tolist()
     part_o = split_indices(old_idx)[split].tolist()
 
-    # Limit per domain
-    if limit is not None:
-        part_y = part_y[:limit]
-        part_o = part_o[:limit]
+    # same dataset length
+    limit = min(len(part_y), len(part_o))
+    part_y = part_y[:limit]
+    part_o = part_o[:limit]
 
     # Wrap subsets in unpaird Dataset
     @dataclass
@@ -107,9 +106,7 @@ def make_unpaired_loader(
     old_ds = Subset(full_ds, part_o)
     paired = Unpaired(young_ds, old_ds)
 
-    logger.info(
-        f"- UTK {split}: young={len(young_ds)}  old={len(old_ds)}" f"(limit={limit})"
-    )
+    logger.info(f"- UTK {split}: young={len(young_ds)}  old={len(old_ds)}")
     return DataLoader(
         paired,
         batch_size=batch_size,
@@ -126,11 +123,8 @@ def prepare_dataset(
     train_batch_size: int = 4,
     eval_batch_size: int = 8,
     num_workers: int = 2,
-    center_crop_size: int = 256,
+    img_size: int = 256,
     resize_size: int = 286,
-    train_size: int | None = None,  # None = use all
-    val_size: int | None = None,
-    test_size: int | None = None,
     seed: int = 42,
 ):
     data_dir = Path(__file__).resolve().parents[2] / "data"
@@ -139,19 +133,11 @@ def prepare_dataset(
     # randomness
     train_transform = T.Compose(
         [
-            T.Resize(resize_size, antialias=True),
-            T.CenterCrop(center_crop_size),
-            T.RandomApply(
-                [
-                    T.RandomAffine(
-                        degrees=5, translate=(0.02, 0.02), scale=(0.97, 1.03), shear=2,
-                        interpolation=T.InterpolationMode.BILINEAR, fill=0,
-                    )
-                ],
-                p=0.3,
-            ),
-            T.RandomHorizontalFlip(0.5),
-            T.ColorJitter(0.05, 0.05, 0.05, 0.02),
+            T.ToPILImage(),
+            T.RandomHorizontalFlip(),
+            T.Resize((img_size + 50, img_size + 50), antialias=True),
+            T.RandomCrop(img_size),
+            T.RandomRotation(degrees=(0, 80)),
             T.ToTensor(),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
@@ -160,8 +146,8 @@ def prepare_dataset(
     # deterministic
     eval_transform = T.Compose(
         [
-            T.CenterCrop(center_crop_size),
-            T.Resize(resize_size),
+            T.Resize(resize_size, antialias=True),
+            T.CenterCrop(img_size),
             T.ToTensor(),
             T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
@@ -175,7 +161,6 @@ def prepare_dataset(
         train_transform,
         train_batch_size,
         num_workers,
-        train_size,
         seed,
     )
     val_loader = make_unpaired_loader(
@@ -184,7 +169,6 @@ def prepare_dataset(
         eval_transform,
         eval_batch_size,
         num_workers,
-        val_size,
         seed,
     )
     test_loader = make_unpaired_loader(
@@ -193,7 +177,6 @@ def prepare_dataset(
         eval_transform,
         eval_batch_size,
         num_workers,
-        test_size,
         seed,
     )
     logger.info("Done.")

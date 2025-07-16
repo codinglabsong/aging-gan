@@ -15,13 +15,12 @@ from pathlib import Path
 from aging_gan.utils import (
     set_seed,
     load_environ_vars,
-    print_trainable_parameters,
     save_checkpoint,
     generate_and_save_samples,
     get_device,
 )
 from aging_gan.data import prepare_dataset
-from aging_gan.model import initialize_models, freeze_encoders, unfreeze_encoders
+from aging_gan.model import initialize_models
 from aging_gan.utils import archive_and_terminate
 
 logger = logging.getLogger(__name__)
@@ -58,6 +57,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=32,
         help="Batch size per device during evaluation.",
+    )
+    p.add_argument(
+        "--lambda_adv_value",
+        type=int,
+        default=2,
+        help="Weight for adversarial loss",
     )
     p.add_argument(
         "--lambda_cyc_value",
@@ -97,24 +102,6 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=10,
         help="The number of example generated images to save per epoch.",
-    )
-    p.add_argument(
-        "--train_size",
-        type=int,
-        default=3000,
-        help="The size of train dataset to train on.",
-    )
-    p.add_argument(
-        "--val_size",
-        type=int,
-        default=800,
-        help="The size of validation dataset to evaluate.",
-    )
-    p.add_argument(
-        "--test_size",
-        type=int,
-        default=800,
-        help="The size of test dataset to evaluate.",
     )
     p.add_argument(
         "--num_workers",
@@ -176,13 +163,16 @@ def initialize_optimizers(cfg, G, F, DX, DY):
     return opt_G, opt_F, opt_DX, opt_DY
 
 
-def initialize_loss_functions(lambda_cyc_value: int = 10, lambda_id_value: int = 5):
+def initialize_loss_functions(
+    lambda_adv_value: int = 2, lambda_cyc_value: int = 10, lambda_id_value: int = 5
+):
     mse = nn.MSELoss()
     l1 = nn.L1Loss()
+    lambda_adv = lambda_adv_value
     lambda_cyc = lambda_cyc_value
     lambda_id = lambda_id_value
 
-    return mse, l1, lambda_cyc, lambda_id
+    return mse, l1, lambda_adv, lambda_cyc, lambda_id
 
 
 def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
@@ -212,6 +202,7 @@ def perform_train_step(
     real_data,
     mse,
     l1,
+    lambda_adv,
     lambda_cyc,
     lambda_id,  # loss functions and loss params
     opt_G,
@@ -260,10 +251,10 @@ def perform_train_step(
     opt_F.zero_grad(set_to_none=True)
     # Loss 1: adversarial terms
     fake_test_logits = DX(fake_x)  # fake x logits
-    loss_f_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
+    loss_f_adv = lambda_adv * mse(fake_test_logits, torch.ones_like(fake_test_logits))
 
     fake_test_logits = DY(fake_y)  # fake y logits
-    loss_g_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
+    loss_g_adv = lambda_adv * mse(fake_test_logits, torch.ones_like(fake_test_logits))
     # Loss 2: cycle terms
     loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
     # Loss 3: identity terms
@@ -299,6 +290,7 @@ def evaluate_epoch(
     split: str,  # either "val" or "test"
     mse,
     l1,
+    lambda_adv,
     lambda_cyc,
     lambda_id,  # loss functions and loss params
     fid_metric,
@@ -349,10 +341,14 @@ def evaluate_epoch(
             # ------ Evaluate Generators ------
             # Loss 1: adversarial terms
             fake_test_logits = DX(fake_x)  # fake x logits
-            loss_f_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
+            loss_f_adv = lambda_adv * mse(
+                fake_test_logits, torch.ones_like(fake_test_logits)
+            )
 
             fake_test_logits = DY(fake_y)  # fake y logits
-            loss_g_adv = mse(fake_test_logits, torch.ones_like(fake_test_logits))
+            loss_g_adv = lambda_adv * mse(
+                fake_test_logits, torch.ones_like(fake_test_logits)
+            )
             # Loss 2: cycle terms
             loss_cyc = lambda_cyc * (l1(rec_x, x) + l1(rec_y, y))
             # Loss 3: identity terms
@@ -396,6 +392,7 @@ def perform_epoch(
     DY,
     mse,
     l1,
+    lambda_adv,
     lambda_cyc,
     lambda_id,
     opt_G,
@@ -427,6 +424,7 @@ def perform_epoch(
             real_data,
             mse,
             l1,
+            lambda_adv,
             lambda_cyc,
             lambda_id,  # loss functions and loss params
             opt_G,
@@ -469,6 +467,7 @@ def perform_epoch(
         "val",
         mse,
         l1,
+        lambda_adv,
         lambda_cyc,
         lambda_id,  # loss functions and loss params
         fid_metric,  # evaluation metric
@@ -527,9 +526,6 @@ def main() -> None:
         cfg.train_batch_size,
         cfg.eval_batch_size,
         cfg.num_workers,
-        train_size=cfg.train_size,
-        val_size=cfg.val_size,
-        test_size=cfg.test_size,
         seed=cfg.seed,
     )
 
@@ -537,12 +533,12 @@ def main() -> None:
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
     # Freeze generator encoderes for training during early epochs
-    logger.info("Parameters of generator G:")
-    logger.info(print_trainable_parameters(G))
-    logger.info("Freezing encoders of generators...")
-    freeze_encoders(G, F)
-    logger.info("Parameters of generator G after freezing:")
-    logger.info(print_trainable_parameters(G))
+    # logger.info("Parameters of generator G:")
+    # logger.info(print_trainable_parameters(G))
+    # logger.info("Freezing encoders of generators...")
+    # freeze_encoders(G, F)
+    # logger.info("Parameters of generator G after freezing:")
+    # logger.info(print_trainable_parameters(G))
     # Initialize optimizers
     (
         opt_G,
@@ -579,8 +575,8 @@ def main() -> None:
         test_loader,
     )
     # Loss functions and scalers
-    mse, l1, lambda_cyc, lambda_id = initialize_loss_functions(
-        cfg.lambda_cyc_value, cfg.lambda_id_value
+    mse, l1, lambda_adv, lambda_cyc, lambda_id = initialize_loss_functions(
+        cfg.lambda_adv_value, cfg.lambda_cyc_value, cfg.lambda_id_value
     )
     # Initialize schedulers (It it important this comes AFTER wrapping optimizers in accelerator)
     sched_G, sched_F, sched_DX, sched_DY = make_schedulers(
@@ -596,11 +592,11 @@ def main() -> None:
     for epoch in range(1, cfg.num_train_epochs + 1):
         logger.info(f"\nEPOCH {epoch}")
         # after 1 full epoch, unfreeze
-        if epoch == 2:
-            logger.info("Unfreezing encoders of generators...")
-            unfreeze_encoders(G, F)
-            logger.info("Parameters of generator G after unfreezing:")
-            logger.info(print_trainable_parameters(G))
+        # if epoch == 2:
+        #     logger.info("Unfreezing encoders of generators...")
+        #     unfreeze_encoders(G, F)
+        #     logger.info("Parameters of generator G after unfreezing:")
+        #     logger.info(print_trainable_parameters(G))
 
         val_metrics = perform_epoch(
             cfg,
@@ -612,6 +608,7 @@ def main() -> None:
             DY,
             mse,
             l1,
+            lambda_adv,
             lambda_cyc,
             lambda_id,
             opt_G,
