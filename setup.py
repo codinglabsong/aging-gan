@@ -9,7 +9,7 @@ setup(
         "python-dotenv",
         "numpy",
         "wandb",
-        # "gradio",
+        "gradio",
         "ipykernel",
         "matplotlib",
         "torch",

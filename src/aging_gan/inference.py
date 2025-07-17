@@ -36,20 +36,13 @@ def parse_args() -> argparse.Namespace:
         default="young2old",
         help="'young2old' uses generator G, 'old2young' uses generator F",
     )
+    p.add_argument(
+        "--train_img_size",
+        type=int,
+        default=256,
+        help="The same img_size you used for training and evaluating.",
+    )
     return p.parse_args()
-
-
-# image helpers
-preprocess = T.Compose(
-    [
-        T.Resize(256, interpolation=Image.BICUBIC),
-        T.CenterCrop(256),
-        T.ToTensor(),
-        T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ]
-)
-
-postprocess = T.Compose([T.Normalize(mean=[-1, -1, -1], std=[2, 2, 2]), T.ToPILImage()])
 
 
 @torch.inference_mode()
@@ -57,6 +50,22 @@ def main() -> None:
     """Load a checkpoint and generate an aged face from ``--input``."""
     cfg = parse_args()
     device = get_device()
+
+    # image helpers
+    preprocess = T.Compose(
+        [
+            T.Resize(
+                (cfg.train_img_size + 50, cfg.train_img_size + 50), antialias=True
+            ),
+            T.CenterCrop(cfg.train_img_size),
+            T.ToTensor(),
+            T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+    )
+
+    postprocess = T.Compose(
+        [T.Normalize(mean=[-1, -1, -1], std=[2, 2, 2]), T.ToPILImage()]
+    )
 
     # Load generators and checkpoint
     G, F, *_ = initialize_models()  # returns G, F, DX, DY
