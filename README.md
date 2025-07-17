@@ -1,22 +1,20 @@
 different lr for gen and disc
 
-
 # Aging GAN
 
-Aging GAN is a research project exploring face aging with a CycleGAN-style architecture. The code trains two U-Net generators and two PatchGAN discriminators on the CelebA dataset, preprocessing into **Young** and **Old** subsets. The generators learn to translate between these domains, effectively "aging" or "de-aging" a face image.
+Aging GAN is a research project exploring facial age transformation with a CycleGAN‑style approach. The model trains two ResNet‑style "encoder–residual–decoder" generators and two PatchGAN discriminators on the UTKFace dataset, split into **Young** and **Old** subsets. The generators learn to translate between these domains, effectively "aging" or "de-aging" a face image.
 
-This repository contains training scripts, minimal utilities, and example notebooks.
+This repository contains training scripts, helper utilities, and inference scripts.
 
 ## Features
 
-- **Unpaired Training Data** – automatically split the CelebA dataset into Young vs. Old and create an unpaired `DataLoader`.
-- **CycleGAN Architecture** – U-Net generators with ResNet encoders and PatchGAN discriminators.
-- **Training Utilities** – gradient clipping, learning-rate scheduling, mixed-precision via `accelerate`, and optional encoder freezing.
-- **Evaluation** – FID metric computation on the validation set.
+- **Unpaired Training Data** – splits the UTKFace dataset into *Young* (18‑28) and *Old* (40+) subsets and builds an unpaired `DataLoader`.
+- **CycleGAN Architecture** – residual U‑Net generators and PatchGAN discriminators.
+- **Training Utilities** – gradient clipping, separate generator/discriminator learning rates with linear decay, mixed precision via `accelerate`, and optional S3 checkpoint archiving.
+- **Evaluation** – FID metric computation on the validation and test sets.
 - **Weights & Biases Logging** – track losses and metrics during training.
-- **Scriptable Workflows** – run training from the command line with `scripts/run_train.sh`.
-
-*Placeholders:* inference helpers, web demo, and quantitative results will be added later.
+- **Scriptable Workflows** – shell scripts for training and inference.
+- **Sample Generation** – saves example outputs after each epoch.
 
 ## Installation
 
@@ -38,7 +36,9 @@ pip install -e .
 ```
 
 ## Data
-The `prepare_dataset` function downloads CelebA automatically and creates train, validation, and test splits. Images are center‑cropped and resized to 256×256. Each split is divided into *Young* and *Old* subsets for unpaired training.
+Place the aligned UTKFace images under `data/utkface_aligned_cropped/UTKFace`.
+The `prepare_dataset` function builds deterministic train/val/test splits and applies random flipping, cropping and rotation for training. 
+Each split is divided into *Young* and *Old* subsets for unpaired training.
 
 ## Training
 Run training with default hyper‑parameters:
@@ -54,7 +54,15 @@ python -m aging_gan.train --help
 ```
 
 ## Inference
-The `aging_gan.inference` module is currently a stub. Once implemented, you will be able to generate aged faces from the command line using `scripts/run_inference.sh`.
+Generate aged faces using the command-line helper:
+
+```bash
+bash scripts/run_inference.sh --input myface.jpg --direction young2old
+```
+The script loads `outputs/checkpoints/best.pth` by default and saves the result beside the input.
+
+## AWS Utilities
+When running on EC2, pass `--archive_and_terminate_ec2` to automatically sync `outputs/` to S3 and terminate the instance after training.
 
 ## Results
 *Results will be added here once experiments are complete.*
@@ -65,7 +73,7 @@ The `aging_gan.inference` module is currently a stub. Once implemented, you will
 ## Repository Structure
 
 - `src/aging_gan/` – core modules (`train.py`, `model.py`, etc.)
-- `scripts/` – helper shell scripts for training and (placeholder) inference
+- `scripts/` – helper scripts for training and inference
 - `notebooks/` – exploratory notebooks
 
 ## Requirements

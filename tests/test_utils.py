@@ -6,6 +6,7 @@ from aging_gan import utils
 
 
 def test_set_seed_reproducibility():
+    """Seeding should make RNGs deterministic."""
     utils.set_seed(123)
     a = random.random()
     b = np.random.rand()
@@ -18,10 +19,12 @@ def test_set_seed_reproducibility():
 
 
 def test_get_device_cpu():
+    """Utility returns CPU when CUDA is unavailable."""
     assert utils.get_device().type == "cpu"
 
 
 def test_save_checkpoint(tmp_path):
+    """Checkpoint file is created on disk."""
     model = torch.nn.Linear(1, 1)
     opt = torch.optim.SGD(model.parameters(), lr=0.1)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda _: 1)

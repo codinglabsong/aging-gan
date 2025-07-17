@@ -7,6 +7,7 @@ import sys
 
 
 def test_parse_args_defaults(monkeypatch):
+    """CLI parser returns expected default arguments."""
     monkeypatch.setattr(sys, "argv", ["prog"])
     args = train.parse_args()
     assert args.gen_lr == 2e-4
@@ -15,6 +16,7 @@ def test_parse_args_defaults(monkeypatch):
 
 
 def test_initialize_loss_functions_defaults():
+    """Loss initializer provides default weights and criteria."""
     mse, l1, adv, cyc, ident = train.initialize_loss_functions()
     assert isinstance(mse, torch.nn.MSELoss)
     assert adv == 2.0
@@ -23,6 +25,7 @@ def test_initialize_loss_functions_defaults():
 
 
 def test_make_schedulers_decay():
+    """Learning rate scheduler should decrease learning rate."""
     cfg = SimpleNamespace(num_train_epochs=4)
     models = model.initialize_models(ngf=8, ndf=8, n_blocks=1)
     opts = [torch.optim.SGD(m.parameters(), lr=1.0) for m in models]

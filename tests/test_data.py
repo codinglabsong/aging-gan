@@ -5,6 +5,7 @@ from aging_gan import data
 
 
 def create_utk_dataset(tmp_path, num_per_split=6):
+    """Create a tiny UTKFace-style directory for testing."""
     root = Path(tmp_path)
     ds_root = root / "utkface_aligned_cropped" / "UTKFace"
     ds_root.mkdir(parents=True)
@@ -21,6 +22,7 @@ def create_utk_dataset(tmp_path, num_per_split=6):
 
 
 def test_utkface_len_and_getitem(tmp_path):
+    """UTKFace yields image/age pairs and correct length."""
     root = create_utk_dataset(tmp_path)
     ds = data.UTKFace(str(root))
     assert len(ds) == 12
@@ -30,6 +32,7 @@ def test_utkface_len_and_getitem(tmp_path):
 
 
 def test_make_unpaired_loader(tmp_path):
+    """Loader returns equal-sized batches of young and old images."""
     root = create_utk_dataset(tmp_path)
     loader = data.make_unpaired_loader(
         str(root),
