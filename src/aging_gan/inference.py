@@ -28,7 +28,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--input",
         type=str,
-        required=True,
+        default=str(
+            Path(__file__).resolve().parents[2] / "images/example.png"
+        ),
         help="Path to source image (required for 'infer')",
     )
     p.add_argument(
