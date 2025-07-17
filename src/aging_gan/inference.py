@@ -1,3 +1,5 @@
+"""Command-line interface for running a trained generator on a single image."""
+
 import argparse
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from aging_gan.utils import get_device
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for running inference."""
     p = argparse.ArgumentParser(
         description="Run one-off inference with a trained Aging-GAN generator"
     )
@@ -51,6 +54,7 @@ postprocess = T.Compose([T.Normalize(mean=[-1, -1, -1], std=[2, 2, 2]), T.ToPILI
 
 @torch.inference_mode()
 def main() -> None:
+    """Load a checkpoint and generate an aged face from ``--input``."""
     cfg = parse_args()
     device = get_device()
 

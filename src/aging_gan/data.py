@@ -1,20 +1,22 @@
+"""Dataset and dataloader utilities for the UTKFace dataset."""
+
 import os
 import logging
-import torch
-from torch.utils.data import DataLoader, Subset, Dataset
-import torchvision.transforms as T
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Tuple
+
+import torch
 from PIL import Image
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, Subset
+import torchvision.transforms as T
 
 logger = logging.getLogger(__name__)
 
 
 class UTKFace(Dataset):
-    """
-    Assumes the unzipped aligned UTKFace images live in  <root>/data/utkface_aligned_cropped/UTKFace
-    File pattern:  {age}_{gender}_{race}_{yyyymmddHHMMSS}.jpg
-    """
+    """Lightweight UTKFace dataset reader."""
 
     def __init__(self, root: str, transform: T.Compose | None = None):
         self.root = (
@@ -29,11 +31,13 @@ class UTKFace(Dataset):
         self.transform = transform
 
     def __len__(self) -> int:
+        """Return the number of images in the dataset."""
         return len(self.files)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[Tensor, int]:
+        """Return the transformed image and associated age label."""
         path = self.files[idx]
-        age = int(path.name.split("_")[0])  # first token of file name is age
+        age = int(path.name.split("_")[0])
         img = Image.open(path).convert("RGB")
         if self.transform:
             img = self.transform(img)
@@ -49,7 +53,8 @@ def make_unpaired_loader(
     seed: int = 42,
     young_max: int = 28,  # 18-28
     old_min: int = 40,  # 40+
-):
+) -> DataLoader:
+    """Return a dataloader yielding unpaired young/old image tuples."""
     full_ds = UTKFace(root, transform)
 
     # Split into young, old indices
@@ -125,7 +130,8 @@ def prepare_dataset(
     num_workers: int = 2,
     img_size: int = 256,
     seed: int = 42,
-):
+) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Create train/validation/test dataloaders for UTKFace."""
     data_dir = Path(__file__).resolve().parents[2] / "data"
     os.makedirs(data_dir, exist_ok=True)
 

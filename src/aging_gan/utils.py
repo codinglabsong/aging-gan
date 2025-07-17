@@ -1,3 +1,5 @@
+"""Utility helpers for training and infrastructure management."""
+
 import os
 import requests
 import logging
@@ -16,7 +18,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def get_device():
+def get_device() -> torch.device:
+    """Return CUDA device if available else CPU."""
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -30,7 +33,8 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False  # trade speed for reproducibility
 
 
-def load_environ_vars(wandb_project: str = "aging-gan"):
+def load_environ_vars(wandb_project: str = "aging-gan") -> None:
+    """Set basic environment variables needed for a run."""
     os.environ["WANDB_PROJECT"] = wandb_project
     logger.info(f"W&B project set to '{wandb_project}'")
 
@@ -64,7 +68,7 @@ def save_checkpoint(
     sched_DX,
     sched_DY,  # schedulers
     kind: str = "best",
-):
+) -> None:
     """Overwrite the single best-ever checkpoint."""
     ckpt_dir = Path(__file__).resolve().parents[2] / "outputs/checkpoints"
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -103,7 +107,8 @@ def generate_and_save_samples(
     epoch,
     device: torch.device,
     num_samples: int = 8,
-):
+) -> None:
+    """Generate ``num_samples`` images from ``generator`` and save a grid."""
     # grab batches until num_samples
     collected = []
     for imgs, _ in val_loader:
