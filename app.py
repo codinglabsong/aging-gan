@@ -34,7 +34,7 @@ device = get_device()
 
 # initialize G (young→old) and F (old→young)
 G, F, _, _ = initialize_models()
-ckpt_path = Path("outputs/checkpoints/epoch_0030.pth")
+ckpt_path = Path("outputs/checkpoints/best.pth")
 ckpt = torch.load(ckpt_path, map_location=device)
 
 G.load_state_dict(ckpt["G"])
