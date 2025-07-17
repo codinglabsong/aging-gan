@@ -4,9 +4,6 @@ from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
-# import torch.nn.utils as nn_utils
-# import segmentation_models_pytorch as smp
-
 
 class ResidualBlock(nn.Module):
     """Simple residual block with two conv layers."""
@@ -138,56 +135,12 @@ class Discriminator(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         """Return discriminator logits for input ``x``."""
-        x = self.model(x)
-        return F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
-
-
-# # Discriminator: PatchGAN 70x70
-# class PatchDiscriminator(nn.Module):
-#     def __init__(self, in_channels=3, ndf=48):
-#         super().__init__()
-#         layers = [
-#             nn_utils.spectral_norm(
-#                 nn.Conv2d(
-#                     in_channels=in_channels,
-#                     out_channels=ndf,
-#                     kernel_size=4,
-#                     stride=2,
-#                     padding=1,
-#                 )
-#             ),
-#             nn.LeakyReLU(0.2),
-#         ]
-#         nf = ndf
-#         for i in range(3):
-#             stride = 2 if i < 2 else 1
-#             layers += [
-#                 nn_utils.spectral_norm(nn.Conv2d(nf, nf * 2, 4, stride, 1)),
-#                 nn.InstanceNorm2d(nf * 2, affine=True),
-#                 nn.LeakyReLU(0.2),
-#             ]
-#             nf *= 2
-#         layers += [nn_utils.spectral_norm(nn.Conv2d(nf, 1, 4, 1, 1))]
-#         self.model = nn.Sequential(*layers)
-
-#     def forward(self, x):
-#         return self.model(x)
-
-
-# # Freeze encoder of model so that model can learn "aging" during the first epoch
-# def freeze_encoders(G, F):
-#     for param in G.encoder.parameters():
-#         param.requires_grad = False
-#     for param in F.encoder.parameters():
-#         param.requires_grad = False
-
-
-# # Unfreeze encoders later
-# def unfreeze_encoders(G, F):
-#     for param in G.encoder.parameters():
-#         param.requires_grad = True
-#     for param in F.encoder.parameters():
-#         param.requires_grad = True
+        # x: (B, 3, H, W)
+        x = self.model(x)  # (B, 1, H//8-2, W//8-2)
+        # Average pooling and flatten
+        return F.avg_pool2d(x, x.size()[2:]).view(
+            x.size()[0], -1
+        )  # global average -> (B, 1, 1, 1) -> flatten to (B, 1)
 
 
 # Initialize and return the generators and discriminators used for training
@@ -197,20 +150,6 @@ def initialize_models(
     n_blocks: int = 9,
 ) -> tuple[Generator, Generator, Discriminator, Discriminator]:
     """Instantiate generators and discriminators with default sizes."""
-    # G = smp.Unet(
-    #     encoder_name="resnet34",
-    #     encoder_weights="imagenet",  # preload low-level filters
-    #     in_channels=3,  # RGB input
-    #     classes=3,  # RGB output
-    # )
-
-    # F = smp.Unet(
-    #     encoder_name="resnet34",
-    #     encoder_weights="imagenet",  # preload low-level filters
-    #     in_channels=3,  # RGB input
-    #     classes=3,  # RGB output
-    # )
-
     # initialize the generators and discriminators
     G = Generator(ngf, n_blocks)
     F = Generator(ngf, n_blocks)

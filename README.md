@@ -1,5 +1,3 @@
-added spectral norm to path gan.
-learning reduces to 0.1
 different lr for gen and disc
 
 

@@ -39,20 +39,6 @@ def load_environ_vars(wandb_project: str = "aging-gan") -> None:
     logger.info(f"W&B project set to '{wandb_project}'")
 
 
-# def print_trainable_parameters(model) -> str:
-#     """
-#     Compute and return a summary of trainable vs. total parameters in a model.
-#     """
-#     trainable_params = 0
-#     all_param = 0
-#     for _, param in model.named_parameters():
-#         all_param += param.numel()
-#         if param.requires_grad:
-#             trainable_params += param.numel()
-
-#     return f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param:.2f}"
-
-
 def save_checkpoint(
     epoch,
     G,

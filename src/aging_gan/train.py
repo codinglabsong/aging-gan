@@ -554,13 +554,6 @@ def main() -> None:
     # ---------- Models, Optimizers, Loss Functions, Schedulers Initialization ----------
     # Initialize the generators (G, F) and discriminators (DX, DY)
     G, F, DX, DY = initialize_models()
-    # Freeze generator encoderes for training during early epochs
-    # logger.info("Parameters of generator G:")
-    # logger.info(print_trainable_parameters(G))
-    # logger.info("Freezing encoders of generators...")
-    # freeze_encoders(G, F)
-    # logger.info("Parameters of generator G after freezing:")
-    # logger.info(print_trainable_parameters(G))
     # Initialize optimizers
     (
         opt_G,
@@ -613,13 +606,6 @@ def main() -> None:
     best_fid = float("inf")  # keep track of the best FID score for each epoch
     for epoch in range(1, cfg.num_train_epochs + 1):
         logger.info(f"\nEPOCH {epoch}")
-        # after 1 full epoch, unfreeze
-        # if epoch == 2:
-        #     logger.info("Unfreezing encoders of generators...")
-        #     unfreeze_encoders(G, F)
-        #     logger.info("Parameters of generator G after unfreezing:")
-        #     logger.info(print_trainable_parameters(G))
-
         val_metrics = perform_epoch(
             cfg,
             train_loader,

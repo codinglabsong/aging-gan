@@ -46,7 +46,7 @@ class UTKFace(Dataset):
 
 def make_unpaired_loader(
     root: str,
-    split: str,  # "train" | "valid" | "test"
+    split: str,
     transform: T.Compose,
     batch_size: int = 4,
     num_workers: int = 1,
