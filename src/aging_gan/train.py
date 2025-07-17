@@ -134,7 +134,10 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def initialize_optimizers(cfg, G, F, DX, DY):
+def initialize_optimizers(
+    cfg, G, F, DX, DY
+) -> tuple[optim.Optimizer, optim.Optimizer, optim.Optimizer, optim.Optimizer]:
+    """Create Adam optimizers for all models."""
     # track all generator params (even frozen encoder params during initial training).
     # This would allow us to transition easily to the full fine-tuning later on by simply toggling requires_grad=True
     # since the optimizers already track all the parameters from the start.
@@ -170,7 +173,8 @@ def initialize_loss_functions(
     lambda_adv_value: float = 2.0,
     lambda_cyc_value: float = 10.0,
     lambda_id_value: float = 7.0,
-):
+) -> tuple[nn.Module, nn.Module, float, float, float]:
+    """Return basic CycleGAN loss functions and weights."""
     mse = nn.MSELoss()
     l1 = nn.L1Loss()
     lambda_adv = lambda_adv_value
@@ -180,7 +184,10 @@ def initialize_loss_functions(
     return mse, l1, lambda_adv, lambda_cyc, lambda_id
 
 
-def make_schedulers(cfg, opt_G, opt_F, opt_DX, opt_DY):
+def make_schedulers(
+    cfg, opt_G, opt_F, opt_DX, opt_DY
+) -> tuple[LambdaLR, LambdaLR, LambdaLR, LambdaLR]:
+    """Return LR schedulers that decay linearly after half the run."""
     # keep lr constant constant for the first half, then linearly decay to 0
     n_epochs = cfg.num_train_epochs
     start_decay = n_epochs // 2
@@ -215,7 +222,8 @@ def perform_train_step(
     opt_DX,
     opt_DY,  # discriminator optimizers
     accelerator,
-):
+) -> dict[str, float]:
+    """Run a single optimization step for generators and discriminators."""
     x, y = real_data
     # ------ Update Generators ------
     opt_G.zero_grad(set_to_none=True)
@@ -304,7 +312,8 @@ def evaluate_epoch(
     lambda_id,  # loss functions and loss params
     fid_metric,
     accelerator,
-):
+) -> dict[str, float]:
+    """Evaluate models on ``loader`` and return averaged metrics."""
     metrics = {
         f"{split}/loss_DX": 0.0,
         f"{split}/loss_DY": 0.0,
@@ -416,7 +425,7 @@ def perform_epoch(
     epoch,
     accelerator,
     fid_metric,
-):
+) -> dict[str, float]:
     """Perform a single epoch."""
     # TRAINING
     logger.info("Training...")

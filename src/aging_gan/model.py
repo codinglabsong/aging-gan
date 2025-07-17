@@ -1,3 +1,6 @@
+"""Model definitions for the CycleGAN-style architecture."""
+
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -6,7 +9,9 @@ import torch.nn.functional as F
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_features):
+    """Simple residual block with two conv layers."""
+
+    def __init__(self, in_features: int) -> None:
         super().__init__()
 
         conv_block = [
@@ -21,12 +26,15 @@ class ResidualBlock(nn.Module):
 
         self.conv_block = nn.Sequential(*conv_block)
 
-    def forward(self, x):
-        return x + self.conv_block(x)  # skip connection
+    def forward(self, x: Tensor) -> Tensor:
+        """Apply the residual block."""
+        return x + self.conv_block(x)
 
 
 class Generator(nn.Module):
-    def __init__(self, ngf, n_residual_blocks=9):
+    """U-Net style generator used for domain translation."""
+
+    def __init__(self, ngf: int, n_residual_blocks: int = 9) -> None:
         super().__init__()
 
         # Initial convlution block
@@ -85,12 +93,15 @@ class Generator(nn.Module):
 
         self.model = nn.Sequential(*model)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Generate an image from ``x``."""
         return self.model(x)
 
 
 class Discriminator(nn.Module):
-    def __init__(self, ndf):
+    """PatchGAN discriminator."""
+
+    def __init__(self, ndf: int) -> None:
         super().__init__()
 
         model = [
@@ -125,13 +136,10 @@ class Discriminator(nn.Module):
 
         self.model = nn.Sequential(*model)
 
-    def forward(self, x):
-        # x: (B, 3, H, W)
-        x = self.model(x)  # (B, 1, H//8-2, W//8-2)
-        # Average pooling and flatten
-        return F.avg_pool2d(x, x.size()[2:]).view(
-            x.size()[0], -1
-        )  # global average -> (B, 1, 1, 1) -> flatten to (B, 1)
+    def forward(self, x: Tensor) -> Tensor:
+        """Return discriminator logits for input ``x``."""
+        x = self.model(x)
+        return F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
 
 
 # # Discriminator: PatchGAN 70x70
@@ -187,7 +195,8 @@ def initialize_models(
     ngf: int = 32,
     ndf: int = 32,
     n_blocks: int = 9,
-):
+) -> tuple[Generator, Generator, Discriminator, Discriminator]:
+    """Instantiate generators and discriminators with default sizes."""
     # G = smp.Unet(
     #     encoder_name="resnet34",
     #     encoder_weights="imagenet",  # preload low-level filters
