@@ -11,7 +11,7 @@ This repository contains training scripts, helper utilities, inference scripts, 
 - **Weights & Biases Logging** - track losses and metrics during training.
 - **Inference Utilities** - command-line interface for image generation on user input.
 - **AWS Utilities** - when running on EC2, IAM-ready scripts to automatically sync `outputs/` to S3 after saving checkpoints and terminate the instance after full training.
-- **Gradio Demo** – ready-to-deploy web app for interactive predictions. Hosted on [Huggingface Spaces](https://huggingface.co/spaces/codinglabsong/Reddit-User-Mimic-Bot).
+- **Gradio Demo** – ready-to-deploy web app for interactive predictions. Hosted on [Huggingface Spaces](https://huggingface.co/spaces/codinglabsong/aging-gan).
 - **Reproducible Workflows** - configuration-based training/inference scripts and environment variables. Optionally set seed during training.
 - **Developer Tools** - linting with ruff and black, plus  unit tests.
 
@@ -151,7 +151,7 @@ This project includes an interactive Gradio app for making predictions with the 
     ```
     - Visit the printed URL (e.g., `http://127.0.0.1:7860`) to interact with the model.
 
-> You can also access the hosted demo on [Huggingface Spaces](https://huggingface.co/spaces/codinglabsong/Reddit-User-Mimic-Bot)
+> You can also access the hosted demo on [Huggingface Spaces](https://huggingface.co/spaces/codinglabsong/aging-gan)
 
 ## Testing
 Run unit tests with:
