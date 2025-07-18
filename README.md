@@ -38,7 +38,7 @@ This repository contains training scripts, helper utilities, inference scripts, 
     ```
 
 ## Data
-We leverage the UTKFace dataset—a public collection of over 20,000 face images with age annotations (0–116), then use the aligned and cropped version for consistency. You can download from [here](https://www.kaggle.com/datasets/jangedoo/utkface-new)
+We leverage the UTKFace dataset—a public collection of over 20,000 face images with age annotations (0–116), then use the aligned and cropped version for consistency. You can download from [here](https://www.kaggle.com/datasets/jangedoo/utkface-new).
 
 Place your data on project root at:
 > data/utkface_aligned_cropped/UTKFace
