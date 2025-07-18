@@ -6,7 +6,7 @@ This repository contains training scripts, helper utilities, inference scripts, 
 ## Features
 - **CycleGAN Architecture** - ResNet‑style "encoder-residual-decoder" generators and PatchGAN discriminators. In addition to adversarial loss, cycle‑consistency loss was used to preserve content/structure. Moreover, identity loss was added to preserve color and style of the original image.
 - **Data Pipeline & Preprocessing** - deterministic train/val/test splits, on-the-fly augmentations, unpaired DataLoader that pairs Young (18–28) and Old (40+) faces at each batch.
-- **Training Utilities & Efficiency** - gradient clipping to stabilize adversarial updates, separate generator/discriminator learning rates with linear decay for latter half of training, mixed precision via `accelerate` for 2× speed/memory improvements, and checkpoint archiving.
+- **Training Utilities & Efficiency** - gradient clipping to stabilize adversarial updates, separate generator/discriminator learning rates with linear decay for latter half of training, mixed precision via `accelerate` for 2× speed/memory improvements, and checkpointing models with per-epoch generated sample images for evaluation.
 - **Evaluation** - FID (Frechet Inception Distance) evaluation on validation and test splits.
 - **Weights & Biases Logging** - track losses and metrics during training.
 - **Inference Utilities** - command-line interface for image generation on user input.
@@ -37,14 +37,14 @@ This repository contains training scripts, helper utilities, inference scripts, 
     pip install -e .
     ```
 
-## Data
+## Data Preprocessing
 We leverage the UTKFace dataset—a public collection of over 20,000 face images with age annotations (0–116), then use the aligned and cropped version for consistency. You can download from [here](https://www.kaggle.com/datasets/jangedoo/utkface-new).
 
 Place your data on project root at:
 > data/utkface_aligned_cropped/UTKFace
 
 The prepare_dataset function handles:
-- Age-based splits: thresholds at 18–28 for Young, 40+ for Old, ignoring mid-range ages.
+- Age-based splits: thresholds at 18–28 for Young, 40+ for Old, ignoring mid-range ages. 7134 examples were filtered for each Young and Old pair. The reasoning behind removing children under age 18 was to help the model converge better as the facial shape often differs a lot between children and adults. It was observed that the model converges better when removing photos of babies that have much larger eye proportions and a rounder face.
 - Deterministic shuffling: 80% train, 10% validation, 10% test with a fixed RNG seed.
 - Augmentations (train only): random horizontal flips, resizing to img_size+50, center/random cropping to img_size, random rotations up to 80°, and normalization to [-1, 1].
 - Evaluation transforms: resize → center crop → normalization (no randomness).
@@ -136,6 +136,16 @@ You can download this checkpoint model on [Releases](https://github.com/codingla
     <td><img src="assets/woman2_o2y.webp" width="160" /></td>
   </tr>
 </table>
+
+### Considerations for Training and Improving Model
+In the case you have time and resources to better train and improve the model, good points to start are...
+
+- **Increase the dataset** size by adding not noisey and high quality data. The limit of the dataset was usually due to the lack of images for the Old group, so adding more images of older faces would certainly help.
+- Consider using **various evaluation metrics**. There is often not always a best single metric to measure image quality for validation. Utilize other metrics such as KID (Kernel Inception Distance), which yield better results with small-sample behavior, or LPIPS (Learned Perceptual Image Patch Similarity) to measure how well your model preserves content or produces diverse outputs. Moreover, **qualitative human evaluation** on generated samples is good practice for these image generation models instead of relying on just metrics.
+- Use a **small batch size**. I made the mistake in the beginning of aiming for a too high batch size for efficiency, but the discriminator easily memorized the training dataset. Lowering batch sizes to 1-16 are recommended, espeically if you have limited data. Also, you may consider adding gradient penalty or spetral normalization to hinder the discimrinator from memorization.
+- Train for **more epochs**. Approach this with caution for GANs, as it might easily lead to overfitting. It is typical for the best models to be produced before training ends. Use your additional metrics as explained previously to choose the best checkpoint.
+- If you really desire to output higher quality results, experiment with other **architectures** or strategies that often yield better results such as CAAE (Conditional Adversarial Autoencoders), StarGAN v2, or AttGAN.
+- Extensive **hyperparameters sweeps** would also improve your hyperparameter choices, but may be computationally expensive and time consuming.
 
 ## Running the Gradio Inference App
 This project includes an interactive Gradio app for making predictions with the trained model.
