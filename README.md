@@ -4,7 +4,7 @@ Aging GAN is an unpaired image-to-image translation project for facial age tran
 This repository contains training scripts, helper utilities, inference scripts, and a Gradio app for demo purposes.
 
 ## Features
-- **CycleGAN Architecture** - ResNet‑style "encoder-residual-decoder" generators and PatchGAN discriminators.
+- **CycleGAN Architecture** - ResNet‑style "encoder-residual-decoder" generators and PatchGAN discriminators. In addition to adversarial loss, cycle‑consistency loss was used to preserve content/structure. Moreover, identity loss was added to preserve color and style of the original image.
 - **Data Pipeline & Preprocessing** - Deterministic train/val/test splits, on-the-fly augmentations, unpaired DataLoader that pairs Young (18–28) and Old (40+) faces at each batch
 - **Training Utilities, Efficiency, Stability** - gradient clipping to stabilize adversarial updates, separate generator/discriminator learning rates with linear decay for latter half of training, mixed precision via `accelerate` for 2× speed/memory improvements, and checkpoint archiving.
 - **Evaluation** - FID (Frechet Inception Distance) evaluation on validation and test splits.
@@ -39,9 +39,9 @@ This repository contains training scripts, helper utilities, inference scripts, 
     ```
 
 ## Data
-We leverage the UTKFace dataset—a public collection of over 20,000 face images with age annotations (0–116), then use the aligned and cropped version for consistency.
+We leverage the UTKFace dataset—a public collection of over 20,000 face images with age annotations (0–116), then use the aligned and cropped version for consistency. You can download from [here](https://www.kaggle.com/datasets/jangedoo/utkface-new)
 
-Place your data under:
+Place your data on project root at:
 > data/utkface_aligned_cropped/UTKFace
 
 The prepare_dataset function handles:
@@ -72,13 +72,71 @@ Generate aged faces using the command-line helper:
 ```bash
 bash scripts/run_inference.sh --input path/to/face.jpg --direction young2old --ckpt outputs/checkpoints/best.pth
 ```
-The script loads `outputs/checkpoints/best.pth` by default and saves the result beside the input.
+
+Or, get test metrics on the test set:
+
+```bash
+bash scripts/run_inference.sh --mode test
+```
+
+Both script loads `outputs/checkpoints/best.pth` by default and saves the result beside the input.
 
 ## Results
-*Results will be added here once experiments are complete.*
+![FID Loss curves](assets/fid_loss.png)
+
+| Test Metric | Value |
+| ------ | ----- |
+| fid_val | *1.629076* |
+| loss_DX | *0.236699* |
+| loss_DY | *0.221634* |
+| loss_gen_total | *3.057503* |
+| loss_f_adv | *1.411055* |
+| loss_g_adv | *0.835522* |
+| loss_cyc | *0.736225* |
+| loss_id | *0.074702* |
+
+These results are on the test set for the model on the epoch that received the lowest `fid_val` (Frechet Inception Distance).
+
+You can download this checkpoint model on [Releases](https://github.com/codinglabsong/aging-gan/releases/tag/v1.0.0).
 
 ### Example Outputs
-*Example images will be shown here in a future update.*
+<table>
+  <caption style="caption-side:top; font-weight:bold; text-align:center;">
+    Young -> Old
+  </caption>
+  <tr>
+    <th>Input 1</th><th>Input 2</th><th>Input 3</th>
+  </tr>
+  <tr>
+    <td><img src="assets/girl.png" width="160" /></td>
+    <td><img src="assets/girl2.png" width="160" /></td>
+    <td><img src="assets/man3.png" width="160" /></td>
+  </tr>
+  <tr>
+    <td><img src="assets/girl_y2o.webp" width="160" /></td>
+    <td><img src="assets/girl2_y2o.webp" width="160" /></td>
+    <td><img src="assets/man3_y2o.webp" width="160" /></td>
+  </tr>
+</table>
+
+<table>
+  <caption style="caption-side:top; font-weight:bold; text-align:center;">
+    Old -> Young
+  </caption>
+  <tr>
+    <th>Input 1</th><th>Input 2</th><th>Input 3</th>
+  </tr>
+  <tr>
+    <td><img src="assets/woman.png" width="160" /></td>
+    <td><img src="assets/man.png" width="160" /></td>
+    <td><img src="assets/woman2.png" width="160" /></td>
+  </tr>
+  <tr>
+    <td><img src="assets/woman_o2y.webp" width="160" /></td>
+    <td><img src="assets/man_o2y.webp" width="160" /></td>
+    <td><img src="assets/woman2_o2y.webp" width="160" /></td>
+  </tr>
+</table>
 
 ### Considerations for Improvements
 This project intentionally focused more on the methods and pipeline than the actual results. In the case you have more time and resources to improve the model, good points to start are...
@@ -130,6 +188,12 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 ## Acknowledgements
 - [Original GAN Paper](https://arxiv.org/abs/1406.2661)
 - [Cycle-Consistent Adversarial Networks Paper](https://arxiv.org/abs/1703.10593)
+- [Young2Old Input 1 Image](https://www.freepik.com/free-photo/person-woman-smiling-studio-portrait_1160249.htm#fromView=keyword&page=1&position=0&uuid=3ae6d09f-2ab3-4572-8c45-552fd6c685fb&query=Young+Girl+Face)
+- [Young2Old Input 2 Image](https://www.pexels.com/photo/shallow-focus-photography-of-woman-1458332/)
+- [Young2Old Input 3 Image](https://www.freepik.com/free-photo/front-view-man-posing_6113006.htm#fromView=keyword&page=1&position=0&uuid=5fbe03b4-8b89-46e1-bd2f-1a98060bec7e&query=Young+Man+Face)
+- [Old2Young Input 1 Image](https://www.yourtango.com/self/gen-x-youngest-old-people)
+- [Old2Young Input 2 Image](https://www.usatoday.com/story/entertainment/celebrities/2024/03/28/ernie-hudson-age-ghostbusters-frozen-empire/73139462007/)
+- [Old2Young Input 3 Image](https://www.iese.edu/standout/women-board-directors-keys-leadership/)
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
