@@ -138,9 +138,6 @@ def initialize_optimizers(
     cfg, G, F, DX, DY
 ) -> tuple[optim.Optimizer, optim.Optimizer, optim.Optimizer, optim.Optimizer]:
     """Create Adam optimizers for all models."""
-    # track all generator params (even frozen encoder params during initial training).
-    # This would allow us to transition easily to the full fine-tuning later on by simply toggling requires_grad=True
-    # since the optimizers already track all the parameters from the start.
     opt_G = optim.Adam(
         G.parameters(),
         lr=cfg.gen_lr,
