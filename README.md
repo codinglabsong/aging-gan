@@ -99,6 +99,8 @@ These results are on the test set for the model checkpoint that received the low
 You can download this checkpoint model on [Releases](https://github.com/codinglabsong/aging-gan/releases/tag/v1.0.0).
 
 ### Example Outputs
+We can see the transition between the young and the middle-aged or old.
+
 <table>
   <caption style="caption-side:top; font-weight:bold; text-align:center;">
     Young -> Old
