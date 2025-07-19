@@ -5,7 +5,7 @@ This repository contains training scripts, helper utilities, inference scripts, 
 
 ## Features
 - **CycleGAN Architecture** - ResNet‑style "encoder-residual-decoder" generators and PatchGAN discriminators. In addition to adversarial loss, cycle‑consistency loss was used to preserve content/structure. Moreover, identity loss was added to preserve color and style of the original image.
-- **Data Pipeline & Preprocessing** - deterministic train/val/test splits, on-the-fly augmentations, unpaired DataLoader that pairs Young (18–28) and Old (40+) faces at each batch.
+- **Data Pipeline & Preprocessing** - deterministic train/val/test splits, on-the-fly augmentations, unpaired DataLoader that pairs Young (18–28) and Middle-aged/Old (40+) faces at each batch.
 - **Training Utilities & Efficiency** - gradient clipping to stabilize adversarial updates, separate generator/discriminator learning rates with linear decay for latter half of training, mixed precision via `accelerate` for 2× speed/memory improvements, and checkpointing models with per-epoch generated sample images for evaluation.
 - **Evaluation** - FID (Frechet Inception Distance) evaluation on validation and test splits.
 - **Weights & Biases Logging** - track losses and metrics during training.
