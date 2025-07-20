@@ -1,4 +1,4 @@
-# Aging GAN
+# Aging CycleGAN
 Aging GAN is an unpaired image-to-image translation project for facial age transformation built on a CycleGAN-style framework. Created with PyTorch, it provides end-to-end tooling—from data preprocessing to training, checkpointing, and a live Gradio demo—while offering infrastructure utilities to simplify training on AWS EC2 instances. The model trains two ResNet‑style "encoder-residual-decoder" generators and two PatchGAN discriminators on the UTKFace dataset, split into **Young** and **Old** subsets. The generators learn to translate between these domains, effectively "aging" or "de-aging" a face image.
 
 This repository contains training scripts, helper utilities, inference scripts, and a Gradio app for demo purposes.
