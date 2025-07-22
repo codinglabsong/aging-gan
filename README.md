@@ -18,7 +18,7 @@ Face‑aging models aren't just "fun filters" on social apps, but address real n
 - **AWS Utilities** - when running on EC2, IAM-ready scripts to automatically sync `outputs/` to S3 after saving checkpoints and terminate the instance after full training.
 - **Gradio Demo** – ready-to-deploy web app for interactive predictions. Hosted on [Huggingface Spaces](https://huggingface.co/spaces/codinglabsong/aging-gan).
 - **Reproducible Workflows** - configuration-based training/inference scripts and environment variables. Optionally set seed during training.
-- **Developer Tools** - linting with ruff and black, plus  unit tests.
+- **Developer Tools & CI** - linting with ruff and black, unit tests with pytest, end‐to‐end smoke tests in GitHub Actions.
 
 ## Installation
 1. Clone this repository and install the core dependencies:
