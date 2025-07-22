@@ -29,7 +29,7 @@ class ResidualBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    """ResNet‑style generator used for domain translation."""
+    """ResNet-style generator used for domain translation."""
 
     def __init__(self, ngf: int, n_residual_blocks: int = 9) -> None:
         super().__init__()
