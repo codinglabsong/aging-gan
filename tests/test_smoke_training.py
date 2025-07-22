@@ -7,32 +7,40 @@ from test_data import create_utk_dataset
 
 class DummyAccelerator:
     def __init__(self):
+        """Initialize a CPU-only dummy accelerator."""
         self.device = torch.device("cpu")
 
     def autocast(self):
+        """Provide a no-op context manager for mixed precision."""
         from contextlib import nullcontext
 
         return nullcontext()
 
     def backward(self, loss):
+        """Perform a standard backward pass on the given loss."""
         loss.backward()
 
     def clip_grad_norm_(self, params, max_norm):
+        """Clip gradients of params to the given max_norm."""
         torch.nn.utils.clip_grad_norm_(params, max_norm)
 
 
 class DummyFID:
     def reset(self):
+        """Reset dummy FID state (no-op)."""
         pass
 
     def update(self, *args, **kwargs):
+        """Update dummy FID with new data (no-op)."""
         pass
 
     def compute(self):
+        """Return a zero tensor as the dummy FID score."""
         return torch.tensor(0.0)
 
 
 def test_smoke_training(tmp_path, monkeypatch):
+    """Run a tiny end-to-end training epoch to verify nothing breaks."""
     root = create_utk_dataset(tmp_path)
     transform = T.Compose([T.ToTensor()])
     train_loader = data.make_unpaired_loader(
